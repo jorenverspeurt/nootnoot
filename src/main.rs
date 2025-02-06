@@ -21,6 +21,10 @@ struct Args {
     /// Also output logs to stdout
     #[arg(short, long)]
     stdout: bool,
+
+    /// Print every response, or just the interruptions
+    #[arg(short, long)]
+    verbose: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -34,8 +38,46 @@ struct Config {
 #[derive(Deserialize, Debug)]
 struct HostConfig {
     address: String,
-    frequency: u64, // Frequency in seconds
-    timeout: u64,   // Timeout in milliseconds
+    frequency: Option<u64>, // Frequency in seconds
+    timeout: Option<u64>,   // Timeout in milliseconds
+    avail_frequency: Option<u64>, // Frequency in seconds
+    unavail_frequency: Option<u64>, // Frequency in seconds
+    unavail_threshold: Option<u64>, // Threshold in number of failures
+}
+
+impl HostConfig {
+    fn validate(&self) -> Result<(), String> {
+        let freq_count = self.frequency.is_some() as u8
+            + self.avail_frequency.is_some() as u8
+            + self.unavail_frequency.is_some() as u8;
+        if freq_count == 3 {
+            return Err(format!("Host {}: 'frequency', 'avail_frequency', and 'unavail_frequency' cannot all be specified at the same time", self.address));
+        }
+
+        let timeout = self.timeout.unwrap_or(1000);
+        let min_frequency = timeout / 1000;
+        if self.get_avail_frequency() <= min_frequency || self.get_unavail_frequency() <= min_frequency {
+            return Err(format!("Host {}: All frequencies must be greater than 'timeout' / 1000", self.address));
+        }
+
+        Ok(())
+    }
+
+    fn get_timeout(&self) -> u64 {
+        self.timeout.unwrap_or(1000)
+    }
+
+    fn get_avail_frequency(&self) -> u64 {
+        self.avail_frequency.or(self.frequency).expect("Either 'avail_frequency' or 'frequency' must be specified")
+    }
+
+    fn get_unavail_frequency(&self) -> u64 {
+        self.unavail_frequency.or(self.frequency).expect("Either 'unavail_frequency' or 'frequency' must be specified")
+    }
+
+    fn get_unavail_threshold(&self) -> u64 {
+        self.unavail_threshold.unwrap_or(1)
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -113,10 +155,12 @@ async fn ping_host(address: &str, timeout: u64) -> Option<Duration> {
     }
 }
 
-fn run_service(config: Config, log_path: &Path, stats: Arc<Mutex<HashMap<String, HostStats>>>, stop_flag: Arc<AtomicBool>, stdout: bool) {
+fn run_service(config: Config, log_path: &Path, stats: Arc<Mutex<HashMap<String, HostStats>>>, stop_flag: Arc<AtomicBool>, stdout: bool, verbose: bool) {
     let mut threads = vec![];
 
     for host in config.hosts {
+        host.validate().expect("Invalid host configuration");
+
         let log_path = log_path.to_path_buf();
         let stats = Arc::clone(&stats);
         let stop_flag = Arc::clone(&stop_flag);
@@ -126,30 +170,62 @@ fn run_service(config: Config, log_path: &Path, stats: Arc<Mutex<HashMap<String,
                 .enable_all()
                 .build()
                 .unwrap();
+            let mut interruption_start: Option<chrono::DateTime<chrono::Local>> = None;
+            let mut failure_count = 0;
+            let mut current_frequency = host.get_avail_frequency();
+
             while !stop_flag.load(Ordering::Relaxed) {
-                let result = runtime.block_on(ping_host(&host.address, host.timeout));
+                let result = runtime.block_on(ping_host(&host.address, host.get_timeout()));
                 let mut stats_guard = stats.lock().unwrap();
                 let host_stats = stats_guard.entry(host.address.clone()).or_insert_with(HostStats::new);
                 host_stats.update(result);
 
                 let avg_latency = host_stats.average_latency()
-                    .map(|lat| format!("avg latency: {} ms", lat))
-                    .unwrap_or_else(|| "no data".to_string());
+                    .map(|lat| format!("{}ms", lat))
+                    .unwrap_or_else(|| "N/A".to_string());
 
-                let log_entry = format!(
-                    "{} - Host: {} - Result: {:?} - {}",
-                    chrono::Utc::now(),
-                    host.address,
-                    result.map(|r| format!("{} ms", r.as_millis())).unwrap_or_else(|| "unreachable".to_string()),
-                    avg_latency
-                );
-                write_log(&log_path, &log_entry, stdout);
+                if verbose {
+                    let log_entry = format!(
+                        "[{}] {} time={} mean={}",
+                        chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                        host.address,
+                        result.map(|r| format!("{}ms", r.as_millis())).unwrap_or_else(|| "unreachable".to_string()),
+                        avg_latency
+                    );
+                    write_log(&log_path, &log_entry, stdout);
+                }
+
+                if result.is_none() {
+                    failure_count += 1;
+                    if failure_count >= host.get_unavail_threshold() && interruption_start.is_none() {
+                        interruption_start = Some(chrono::Local::now());
+                        let log_entry = format!(
+                            "[{}] {} unreachable!",
+                            interruption_start.unwrap().format("%Y-%m-%d %H:%M:%S"),
+                            host.address
+                        );
+                        write_log(&log_path, &log_entry, stdout);
+                    }
+                    current_frequency = host.get_unavail_frequency();
+                } else {
+                    failure_count = 0;
+                    if interruption_start.is_some() {
+                        interruption_start = None;
+                        let log_entry = format!(
+                            "[{}] {} reachable again!",
+                            chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
+                            host.address
+                        );
+                        write_log(&log_path, &log_entry, stdout);
+                    }
+                    current_frequency = host.get_avail_frequency();
+                }
 
                 if stop_flag.load(Ordering::Relaxed) {
                     break;
                 }
 
-                thread::sleep(Duration::from_secs(host.frequency));
+                thread::sleep(Duration::from_secs(current_frequency));
             }
         }));
     }
@@ -200,5 +276,5 @@ async fn main() {
         warp::serve(stats_filter).run((address.parse::<IpAddr>().unwrap(), port)).await;
     });
 
-    run_service(config, log_path, Arc::clone(&stats), stop_flag, args.stdout);
+    run_service(config, log_path, Arc::clone(&stats), stop_flag, args.stdout, args.verbose);
 }
