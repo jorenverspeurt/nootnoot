@@ -172,7 +172,7 @@ fn run_service(config: Config, log_path: &Path, stats: Arc<Mutex<HashMap<String,
                 .unwrap();
             let mut interruption_start: Option<chrono::DateTime<chrono::Local>> = None;
             let mut failure_count = 0;
-            let mut current_frequency = host.get_avail_frequency();
+            let mut current_frequency;
 
             while !stop_flag.load(Ordering::Relaxed) {
                 let result = runtime.block_on(ping_host(&host.address, host.get_timeout()));
