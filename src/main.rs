@@ -246,16 +246,18 @@ async fn run_service(
             let mut current_frequency = host.get_avail_frequency();
 
             while !stop_flag.load(Ordering::Relaxed) {
-                tokio::time::sleep(Duration::from_secs(current_frequency)).await;
+                let sleep_duration = Duration::from_secs(current_frequency);
+                tokio::select! {
+                    _ = tokio::time::sleep(sleep_duration) => {},
+                    _ = async { while !stop_flag.load(Ordering::Relaxed) { tokio::task::yield_now().await; } } => { break; }
+                }
+
                 let result = ping_host(&host.address, host.get_timeout()).await;
                 let mut stats_guard = stats.write().await;
-                let host_stats = stats_guard
-                    .entry(host.address.clone())
-                    .or_insert_with(|| HostStats::new(log_buffer_size));
+                let host_stats = stats_guard.entry(host.address.clone()).or_insert_with(|| HostStats::new(log_buffer_size));
                 host_stats.update(result, interruption_start);
 
-                let avg_latency = host_stats
-                    .average_latency()
+                let avg_latency = host_stats.average_latency()
                     .map(|lat| format!("{}ms", lat))
                     .unwrap_or_else(|| "N/A".to_string());
 
@@ -264,9 +266,7 @@ async fn run_service(
                         "[{}] {} time={} mean={}",
                         chrono::Local::now().format("%Y-%m-%d %H:%M:%S"),
                         host.address,
-                        result
-                            .map(|r| format!("{}ms", r.as_millis()))
-                            .unwrap_or_else(|| "unreachable".to_string()),
+                        result.map(|r| format!("{}ms", r.as_millis())).unwrap_or_else(|| "unreachable".to_string()),
                         avg_latency
                     );
                     write_log(&log_path, &log_entry, stdout);
@@ -274,8 +274,7 @@ async fn run_service(
 
                 if result.is_none() {
                     failure_count += 1;
-                    if failure_count >= host.get_unavail_threshold() && interruption_start.is_none()
-                    {
+                    if failure_count >= host.get_unavail_threshold() && interruption_start.is_none() {
                         interruption_start = Some(chrono::Local::now());
                         let log_entry = format!(
                             "[{}] {} unreachable!",
