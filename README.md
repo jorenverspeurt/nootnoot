@@ -20,6 +20,8 @@ cd nootnoot
 cargo build --release
 ```
 
+The built binary will be in `target/release`.
+
 To install the binary to your Cargo `bin` directory, use `cargo install`:
 
 ```sh
