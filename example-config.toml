@@ -1,0 +1,40 @@
+# Configuration for the nootnoot tool
+# -----------------------------------
+
+# Server address to bind the dashboard (optional, default: "0.0.0.0")
+address = "0.0.0.0"
+
+# Port to bind the dashboard (optional, default: 8080)
+port = 8080
+
+# Path to the log file (optional, default: "./nootnoot.log")
+log_path = "./nootnoot.log"
+
+# Size of the log buffer (optional, default: 10)
+log_buffer_size = 10
+
+# List of hosts to monitor
+# ------------------------
+[[hosts]]
+# The address of the host to monitor (required)
+address = "192.168.1.1"
+
+# Interval at which to ping the host in seconds (optional, default: None)
+# Only one of 'frequency', 'avail_frequency', or 'unavail_frequency' should be specified
+frequency = 30
+
+# Timeout for each ping in milliseconds (optional, default: 1000)
+timeout = 500
+
+# Number of consecutive failures before considering the host unavailable (optional, default: 1)
+unavail_threshold = 3
+
+[[hosts]]
+address = "8.8.8.8"
+
+# Interval at which to ping the host while it is still available in seconds (optional, default: None)
+avail_frequency = 60
+
+# Interval at which to ping the host when it is unavailable in seconds (optional, default: None)
+unavail_frequency = 10
+

@@ -1,4 +1,0 @@
-[[hosts]]
-address = "192.168.1.1"
-frequency = 1
-timeout = 500
