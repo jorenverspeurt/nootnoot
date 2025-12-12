@@ -1,99 +1,186 @@
-# Noot Noot
+# nootnoot — Multi-Host Ping Monitor with Optional Web Dashboard
 
-Noot Noot is a utility to continuously monitor the availability and latency of hosts by sending periodic ping requests. It provides a web dashboard to visualize the status and average latency of the monitored hosts.
+`nootnoot` is a lightweight, efficient Rust daemon for monitoring the reachability and latency of multiple hosts.  
+It is designed for **network monitoring**, and can run either:
+
+- as a **systemd service**, or  
+- interactively from the **command line**.
+
+The tool can adapt its ping rate based on host availability, it logs reachability changes and latency summaries, and can optionally expose a simple **web dashboard** with recent status and latency history.
+
+`nootnoot` is licensed under the **BSD-3-Clause** license (see the **LICENSE** file).
+
+---
 
 ## Features
 
-- Monitor multiple hosts
-- Configurable ping frequency and timeout
-- Different ping frequencies depending on current availability
-- Log ping results to a file
-- Web dashboard to visualize host status and latency
+### ✔ Monitor multiple hosts
+Each host has configurable:
+- Address  
+- Ping interval when reachable (`up_interval_ms`)  
+- Ping interval when unreachable (`down_interval_ms`)  
+- Optional per-host detailed log file  
+
+### ✔ Efficient & robust
+- Async Rust using Tokio  
+- Low CPU and memory usage  
+- Safe handling of shutdown (SIGTERM, Ctrl-C)
+
+### ✔ Reachability & latency logging
+- Logs UP/DOWN events  
+- Logs periodic latency summaries (mean + stddev)  
+- Optional detailed per-ping logging
+
+### ✔ Optional web dashboard
+- Shows 3 most recent reachability changes per host  
+- Shows last 3 hours of latency samples  
+- Auto-refresh HTML UI  
+- JSON API at `/api/state`
+
+### ✔ Flexible configuration
+- CLI arguments  
+- Config file (`./nootnoot.toml`, `~/.config/nootnoot.toml`, or `/etc/nootnoot.toml`)  
+- CLI overrides config  
+
+### ✔ systemd integration
+- Uses `DynamicUser=yes`  
+- Uses `LogsDirectory=nootnoot` (systemd creates `/var/log/nootnoot/` automatically)  
+- No persistent service users, no manual directory management  
+
+---
 
 ## Installation
 
-To install Noot Noot, you need to have [Rust](https://www.rust-lang.org/) installed. Then, you can build the project using Cargo:
+You can install `nootnoot` in several ways:
 
-```sh
-git clone https://github.com/yourusername/nootnoot.git
+---
+
+### 1. Install via Makefile (system-wide)
+
+```bash
+git clone https://github.com/yourname/nootnoot.git
+cd nootnoot
+make install
+```
+
+Uninstall:
+
+```bash
+make uninstall
+```
+
+---
+
+### 2. Install via PKGBUILD (Arch Linux)
+
+```bash
+cd packaging/arch
+makepkg -si
+```
+
+Enable the systemd service:
+
+```bash
+sudo systemctl enable --now nootnoot.service
+```
+
+---
+
+### 3. Install manually (cargo)
+
+```bash
+git clone https://github.com/yourname/nootnoot.git
 cd nootnoot
 cargo build --release
+sudo cp target/release/nootnoot /usr/local/bin/
 ```
 
-The built binary will be in `target/release`.
+---
 
-To install the binary to your Cargo `bin` directory, use `cargo install`:
+## Usage (Command Line)
 
-```sh
-cargo install --path .
+```bash
+nootnoot   --host "router,192.168.0.1,1000,5000"   --host "server,10.0.0.10,1000,3000"   --web   --web-bind 0.0.0.0:8080
 ```
 
-## Usage
+### Key CLI Options
 
-To run Noot Noot, you need to provide a configuration file. You can specify the path to the configuration file using the `-c` or `--config` option. Additionally, you can enable logging to stdout and verbose mode using the `-s` or `--stdout` and `-v` or `--verbose` options, respectively.
+| Option | Description |
+|--------|-------------|
+| `--config <path>` | Path to configuration file |
+| `--host "name,address,up_ms,down_ms"` | Add a host (repeatable) |
+| `--log-file <path>` | Override log output |
+| `--web` | Enable web dashboard |
+| `--web-bind <host:port>` | Bind address for dashboard |
+| `--summary-interval <seconds>` | Summary logging interval |
 
-```sh
-./target/release/nootnoot -c /path/to/config.toml -s -v
-```
-
-In verbose mode, the tool continuously logs the results of the pings to stdout, not just when the availability status changes.
-
-### Command Line Options
-
-- `-c, --config <FILE>`: Path to the configuration file (default: `/etc/nootnoot/config.toml`)
-- `-s, --stdout`: Also output logs to stdout
-- `-v, --verbose`: Print every response, or just the interruptions
+---
 
 ## Configuration
 
-The configuration file is written in TOML format. Below is an example configuration file with all available options:
+Example `/etc/nootnoot.toml`:
 
 ```toml
-# Configuration for the nootnoot tool
-# -----------------------------------
+# Interval in seconds for summary logging
+summary_interval_secs = 600
+# Path to the main log file
+log_file = "/var/log/nootnoot/nootnoot.log"
 
-# Server address to bind the dashboard (optional, default: "0.0.0.0")
-address = "0.0.0.0"
+[web]
+# Enable the web server on the following bind address
+bind = "0.0.0.0:8080"
 
-# Port to bind the dashboard (optional, default: 8080)
-port = 8080
-
-# Path to the log file (optional, default: "./nootnoot.log")
-log_path = "./nootnoot.log"
-
-# Size of the log buffer (optional, default: 10)
-log_buffer_size = 10
-
-# List of hosts to monitor
-# ------------------------
 [[hosts]]
-# The address of the host to monitor (required)
+name = "router"
 address = "192.168.1.1"
-
-# Interval at which to ping the host in seconds (optional, default: None)
-# Only one of 'frequency', 'avail_frequency', or 'unavail_frequency' should be specified
-frequency = 30
-
-# Timeout for each ping in milliseconds (optional, default: 1000)
-timeout = 500
-
-# Number of consecutive failures before considering the host unavailable (optional, default: 1)
-unavail_threshold = 3
+up_interval_ms = 10_000
+down_interval_ms = 1_000
+detailed_log = "/var/log/nootnoot/router-detail.log"
 
 [[hosts]]
-address = "8.8.8.8"
-
-# Interval at which to ping the host while it is still available in seconds (optional, default: None)
-avail_frequency = 60
-
-# Interval at which to ping the host when it is unavailable in seconds (optional, default: None)
-unavail_frequency = 10
+name = "server"
+address = "example.org"
+up_interval_ms = 60_000
+down_interval_ms = 3_000
+# no detailed log for this one
 ```
 
-## Dashboard
+---
 
-Noot Noot provides a web dashboard to visualize the status and statistics of the monitored hosts. The dashboard is accessible at `http://<address>:<port>/dashboard`, where `<address>` and `<port>` are specified in the configuration file.
+## systemd Usage
+
+```bash
+sudo systemctl enable --now nootnoot.service
+journalctl -u nootnoot -f
+```
+
+The service uses:
+
+```ini
+DynamicUser=yes
+LogsDirectory=nootnoot
+```
+
+---
+
+## Web Dashboard
+
+- Dashboard: `http://<bind-address>/`
+- JSON API: `http://<bind-address>/api/state`
+
+---
+
+## Development
+
+```bash
+cargo build
+cargo run -- --config ./nootnoot.toml
+cargo test
+```
+
+---
 
 ## License
 
-This project is licensed under the 3-Clause BSD License. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the **BSD 3-Clause License**.  
+See the **LICENSE** file for the full text.

@@ -22,6 +22,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::{net::TcpListener, process::Command, signal, sync::mpsc};
 
+mod webui;
+
 #[derive(Parser, Debug)]
 #[command(name = "nootnoot")]
 #[command(author = "You")]
@@ -238,7 +240,7 @@ struct HostWebState {
 }
 
 #[derive(Clone)]
-struct WebState {
+pub struct WebState {
     inner: Arc<RwLock<HashMap<String, HostWebState>>>,
 }
 
@@ -365,8 +367,21 @@ fn load_config(args: &Args) -> Result<(Vec<HostConfig>, u64, Option<PathBuf>, Op
         if hosts.is_empty() {
             return Err(ConfigError::NoHosts);
         }
+
         let summary = args.summary_interval.unwrap_or(default_summary_interval());
-        return Ok((hosts, summary, args.log_file.clone(), None));
+
+        let web_cfg = if args.web {
+            Some(WebConfig {
+                bind: args
+                    .web_bind
+                    .clone()
+                    .unwrap_or_else(|| "127.0.0.1:8080".to_string()),
+            })
+        } else {
+            None
+        };
+
+        return Ok((hosts, summary, args.log_file.clone(), web_cfg));
     }
 
     // Otherwise: config file
@@ -415,6 +430,7 @@ fn load_config(args: &Args) -> Result<(Vec<HostConfig>, u64, Option<PathBuf>, Op
 
 // ============ Ping implementation ============
 
+#[cfg(not(test))]
 async fn ping_once(address: &str, timeout: Duration) -> io::Result<Option<f64>> {
     // Uses system "ping -c 1 -W timeout_secs address"
     // Returns latency in ms, or Ok(None) if unreachable / timeout / parse error
@@ -453,6 +469,28 @@ async fn ping_once(address: &str, timeout: Duration) -> io::Result<Option<f64>> 
 
     Ok(Some(approx_latency_ms))
 }
+
+#[cfg(test)]
+mod test_ping {
+    use super::*;
+    use once_cell::sync::Lazy;
+    use std::sync::Mutex as StdMutex;
+
+    // Shared test latency; tests can tweak it if needed
+    pub static TEST_PING_LATENCY_MS: Lazy<StdMutex<Option<f64>>> =
+        Lazy::new(|| StdMutex::new(Some(5.0)));
+
+    pub fn set_test_ping_latency(latency: Option<f64>) {
+        *TEST_PING_LATENCY_MS.lock().unwrap() = latency;
+    }
+
+    pub(super) async fn ping_once(_address: &str, _timeout: Duration) -> io::Result<Option<f64>> {
+        Ok(*TEST_PING_LATENCY_MS.lock().unwrap())
+    }
+}
+
+#[cfg(test)]
+use test_ping::ping_once;
 
 // ============ Host task ============
 
@@ -596,81 +634,6 @@ async fn run_stats_aggregator(
     }
 }
 
-// ============ Web dashboard ============
-
-#[derive(Clone)]
-struct AppWebState {
-    web_state: WebState,
-}
-
-async fn handler_index(State(state): State<AppWebState>) -> impl IntoResponse {
-    let html = format!(
-        r#"<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>nootnoot dashboard</title>
-  <style>
-    body {{ font-family: sans-serif; margin: 1rem; }}
-    .host {{ border: 1px solid #ddd; padding: 0.5rem 1rem; margin-bottom: 1rem; }}
-    .host h2 {{ margin-top: 0; }}
-    .events, .latencies {{ font-family: monospace; white-space: pre; }}
-  </style>
-</head>
-<body>
-  <h1>nootnoot dashboard</h1>
-  <p>This is a simple textual dashboard. A JSON API is available at <code>/api/state</code> for building a richer UI.</p>
-  <div id="hosts"></div>
-
-  <script>
-    async function refresh() {{
-      const res = await fetch('/api/state');
-      if (!res.ok) return;
-      const data = await res.json();
-      const container = document.getElementById('hosts');
-      container.innerHTML = '';
-      for (const [name, st] of Object.entries(data)) {{
-        const div = document.createElement('div');
-        div.className = 'host';
-        const h2 = document.createElement('h2');
-        h2.textContent = name + ' (last status: ' + (st.last_status === null ? 'unknown' : (st.last_status ? 'UP' : 'DOWN')) + ')';
-        div.appendChild(h2);
-
-        const evTitle = document.createElement('h3');
-        evTitle.textContent = 'Recent reachability changes (max 3):';
-        div.appendChild(evTitle);
-        const evPre = document.createElement('pre');
-        evPre.className = 'events';
-        evPre.textContent = st.reachability_events.map(ev => ev.timestamp + ' reachable=' + ev.reachable).join('\\n');
-        div.appendChild(evPre);
-
-        const latTitle = document.createElement('h3');
-        latTitle.textContent = 'Recent latency samples (ms, last 3h):';
-        div.appendChild(latTitle);
-        const latPre = document.createElement('pre');
-        latPre.className = 'latencies';
-        latPre.textContent = st.latency_samples.map(s => s.timestamp + ' ' + (s.latency_ms === null ? 'NaN' : s.latency_ms.toFixed(3))).join('\\n');
-        div.appendChild(latPre);
-
-        container.appendChild(div);
-      }}
-    }}
-
-    refresh();
-    setInterval(refresh, 5000);
-  </script>
-</body>
-</html>
-"#
-    );
-    Html(html)
-}
-
-async fn handler_state(State(state): State<AppWebState>) -> impl IntoResponse {
-    let snapshot = state.web_state.snapshot();
-    (StatusCode::OK, Json(snapshot))
-}
-
 // ============ Signals ============
 
 async fn shutdown_signal() {
@@ -733,20 +696,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // spawn web server if enabled
     let web_handle = if let (Some(cfg), Some(ref ws)) = (web_cfg.as_ref(), web_state.as_ref()) {
-        let app_state = AppWebState {
-            web_state: ws.clone().clone(),
-        };
-        let app = Router::new()
-            .route("/", get(handler_index))
-            .route("/api/state", get(handler_state))
-            .with_state(app_state);
+        let app = webui::build_router(ws.clone().clone());
 
         let addr: std::net::SocketAddr = cfg.bind.parse().expect("invalid web bind address");
         let shutdown_for_server = shutdown_tx.clone();
 
         Some(tokio::spawn(async move {
             tracing::info!("Starting web dashboard on {}", addr);
-            let listener = TcpListener::bind(addr).await.expect("failed to bind TCP listener");
+            let listener = tokio::net::TcpListener::bind(addr)
+                .await
+                .expect("failed to bind TCP listener");
 
             axum::serve(listener, app)
                 .with_graceful_shutdown(async move {
@@ -811,4 +770,214 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_ping::set_test_ping_latency;
+    use tempfile;
+    use tokio::sync::broadcast;
+    use tokio::time::{sleep, Duration};
+
+    // --- Config tests ---
+
+    #[test]
+    fn parse_cli_hosts_works() {
+        let args = crate::Args {
+            config: None,
+            host: vec!["router,1.2.3.4,1000,5000".to_string()],
+            log_file: None,
+            web: false,
+            web_bind: None,
+            summary_interval: None,
+        };
+
+        let (hosts, summary_interval, log_file, web_cfg) =
+            load_config(&args).expect("config should load");
+
+        assert_eq!(hosts.len(), 1);
+        let h = &hosts[0];
+        assert_eq!(h.name, "router");
+        assert_eq!(h.address, "1.2.3.4");
+        assert_eq!(h.up_interval_ms, 1000);
+        assert_eq!(h.down_interval_ms, 5000);
+
+        assert_eq!(summary_interval, default_summary_interval());
+        assert!(log_file.is_none());
+        assert!(web_cfg.is_none());
+    }
+
+    #[test]
+    fn load_config_from_file_works() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nootnoot.toml");
+
+        std::fs::write(
+            &path,
+            r#"
+summary_interval_secs = 42
+
+[[hosts]]
+name = "host1"
+address = "10.0.0.1"
+up_interval_ms = 100
+down_interval_ms = 200
+"#,
+        )
+        .unwrap();
+
+        let args = crate::Args {
+            config: Some(path),
+            host: Vec::new(),
+            log_file: None,
+            web: false,
+            web_bind: None,
+            summary_interval: None,
+        };
+
+        let (hosts, summary_interval, log_file, web_cfg) =
+            load_config(&args).expect("config from file should load");
+
+        assert_eq!(hosts.len(), 1);
+        assert_eq!(hosts[0].name, "host1");
+        assert_eq!(hosts[0].address, "10.0.0.1");
+        assert_eq!(hosts[0].up_interval_ms, 100);
+        assert_eq!(hosts[0].down_interval_ms, 200);
+
+        assert_eq!(summary_interval, 42);
+        assert!(log_file.is_none());
+        assert!(web_cfg.is_none());
+    }
+
+    // --- Web state tests ---
+
+    #[test]
+    fn web_state_tracks_reachability_changes() {
+        let hosts = vec![HostConfig {
+            name: "h".to_string(),
+            address: "1.2.3.4".to_string(),
+            up_interval_ms: 1000,
+            down_interval_ms: 1000,
+            detailed_log: None,
+        }];
+
+        let ws = WebState::new(&hosts);
+
+        let t1 = chrono::Utc::now();
+
+        let s1 = PingSample {
+            host_name: "h".into(),
+            timestamp: t1,
+            reachable: true,
+            latency_ms: Some(10.0),
+        };
+
+        ws.update_from_sample(&s1);
+
+        let snap = ws.snapshot();
+        let host_state = snap.get("h").expect("host exists in snapshot");
+        assert_eq!(host_state.last_status, Some(true));
+        assert_eq!(host_state.reachability_events.len(), 1);
+
+        let s2 = PingSample {
+            host_name: "h".into(),
+            timestamp: t1 + chrono::Duration::seconds(1),
+            reachable: false,
+            latency_ms: None,
+        };
+
+        ws.update_from_sample(&s2);
+        let snap2 = ws.snapshot();
+        let host_state2 = snap2.get("h").unwrap();
+        assert_eq!(host_state2.last_status, Some(false));
+        assert_eq!(host_state2.reachability_events.len(), 2);
+    }
+
+    // --- Stats aggregator tests ---
+
+    #[tokio::test]
+    async fn stats_aggregator_consumes_samples_and_shuts_down() {
+        let (tx, rx) = mpsc::channel(16);
+        let logger = Logger::new_to_stdout();
+
+        let (sd_tx, sd_rx) = broadcast::channel(1);
+
+        let handle = tokio::spawn(async move {
+            run_stats_aggregator(rx, logger, 1, sd_rx).await;
+        });
+
+        let now = chrono::Utc::now();
+
+        tx.send(PingSample {
+            host_name: "host1".into(),
+            timestamp: now,
+            reachable: true,
+            latency_ms: Some(100.0),
+        })
+        .await
+        .unwrap();
+
+        tx.send(PingSample {
+            host_name: "host1".into(),
+            timestamp: now,
+            reachable: true,
+            latency_ms: Some(200.0),
+        })
+        .await
+        .unwrap();
+
+        // Give it time to hit the summary interval
+        sleep(Duration::from_millis(1200)).await;
+
+        // Trigger shutdown
+        sd_tx.send(()).unwrap();
+        handle.await.unwrap();
+    }
+
+    // --- Host task tests ---
+
+    #[tokio::test]
+    async fn host_task_emits_samples_and_respects_shutdown() {
+        // Make test ping return a fixed latency
+        set_test_ping_latency(Some(5.0));
+
+        let host = HostConfig {
+            name: "h".into(),
+            address: "127.0.0.1".into(),
+            up_interval_ms: 10,
+            down_interval_ms: 10,
+            detailed_log: None,
+        };
+
+        let logger = Logger::new_to_stdout();
+        let (tx, mut rx) = mpsc::channel(16);
+
+        let hosts = vec![host.clone()];
+        let ws = Some(WebState::new(&hosts));
+
+        let (sd_tx, sd_rx) = broadcast::channel(1);
+
+        let task = tokio::spawn(async move {
+            run_host_task(
+                host,
+                logger,
+                None,
+                tx,
+                ws,
+                sd_rx,
+            )
+            .await;
+        });
+
+        // Wait for at least one sample
+        let sample = rx.recv().await.expect("expected a sample from host task");
+        assert_eq!(sample.host_name, "h");
+        assert_eq!(sample.latency_ms, Some(5.0));
+        assert!(sample.reachable);
+
+        // Shut down the task
+        sd_tx.send(()).unwrap();
+        task.await.unwrap();
+    }
 }

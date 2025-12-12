@@ -1,0 +1,67 @@
+services:
+  nootnoot:
+    build: .
+    container_name: nootnoot
+    restart: unless-stopped
+
+    # If ping complains about "Operation not permitted", this helps:
+    cap_add:
+      - NET_RAW
+
+    # Map config file from host into container
+    volumes:
+      # Use a Docker-specific config
+      - ./config/nootnoot.docker.toml:/etc/nootnoot.toml:ro
+      # Optional: persistent log directory
+      - ./logs:/var/log/nootnoot
+
+    environment:
+      - RUST_LOG=info
+
+    ports:
+      - "8081:8080"
+
+    # Override default CMD to ensure web is on
+    command: ["--config", "/etc/nootnoot.toml", "--web", "--web-bind", "0.0.0.0:8080"]
+
+  ubuntu-install-test:
+    image: ubuntu:24.04
+    container_name: nootnoot-ubuntu-install-test
+    working_dir: /src
+    volumes:
+      - .:/src
+    command: >
+      bash -lc "
+        apt-get update &&
+        apt-get install -y build-essential pkg-config libssl-dev curl &&
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &&
+        source $HOME/.cargo/env &&
+        make install &&
+        nootnoot --help
+      "
+
+  arch-pkg-test:
+    image: archlinux:base-devel
+    container_name: nootnoot-arch-pkg-test
+    working_dir: /src
+    volumes:
+      - .:/src
+    entrypoint: /bin/bash
+    command: >
+      -lc "
+        # Update package databases (non-interactive)
+        pacman -Sy --noconfirm git rust &&
+
+        # Create a non-root user called 'builder' with home dir /home/builder
+        useradd -m builder &&
+
+        # Give that user ownership of the source tree
+        chown -R builder:builder /src &&
+
+        # Run makepkg as 'builder' (no password prompt because we're root)
+        su - builder -s /bin/bash -c '
+          cd /src/packaging/arch &&
+          makepkg -si --noconfirm
+        '
+      "
+

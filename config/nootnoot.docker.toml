@@ -1,0 +1,15 @@
+summary_interval_secs = 60
+
+# For Docker, it's usually best to log to stdout.
+# Leave this commented out unless you mount /var/log/nootnoot.
+# log_file = "/var/log/nootnoot/nootnoot.log"
+
+[web]
+bind = "0.0.0.0:8080"
+
+[[hosts]]
+name = "router"
+address = "192.168.1.1"
+up_interval_ms = 1000
+down_interval_ms = 5000
+# detailed_log = "/var/log/nootnoot/router-detail.log"

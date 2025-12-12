@@ -1,0 +1,56 @@
+pkgname=nootnoot-git
+pkgver=0.1.0.r0.g0000000
+pkgrel=1
+pkgdesc="Multi-host ping monitor with optional web dashboard (development git version)"
+arch=('x86_64')
+url="https://github.com/jorenverspeurt/nootnoot"
+license=('BSD-3-Clause')
+depends=('systemd')
+makedepends=('rust' 'git')
+provides=('nootnoot')
+conflicts=('nootnoot')
+source=("git+https://github.com/jorenverspeurt/nootnoot.git")
+sha256sums=('SKIP')
+
+_gitname="nootnoot"
+
+pkgver() {
+  cd "${srcdir}/${_gitname}"
+  # version like: 0.1.0.r42.gabcdef1
+  local ver
+  ver=$(grep '^version' Cargo.toml | head -n1 | sed 's/.*= *"\(.*\)"/\1/')
+  printf "%s.r%s.g%s" \
+    "$ver" \
+    "$(git rev-list --count HEAD)" \
+    "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "${srcdir}/${_gitname}"
+  CARGO_TARGET_DIR=target cargo build --release --locked
+}
+
+check() {
+  # Optional: run tests
+  cd "${srcdir}/${_gitname}"
+  CARGO_TARGET_DIR=target cargo test --locked
+}
+
+package() {
+  cd "${srcdir}/${_gitname}"
+
+  # Binary
+  install -Dm755 "target/release/nootnoot" \
+    "${pkgdir}/usr/bin/nootnoot"
+
+  # Systemd service
+  install -Dm644 "packaging/systemd/nootnoot.service" \
+    "${pkgdir}/usr/lib/systemd/system/nootnoot.service"
+
+  # Example config as actual config with pacman backup semantics
+  install -Dm644 "config/nootnoot.example.toml" \
+    "${pkgdir}/etc/nootnoot.toml"
+}
+
+# Mark config file so pacman treats it as a config and uses .pacnew / .pacsave
+backup=('etc/nootnoot.toml')

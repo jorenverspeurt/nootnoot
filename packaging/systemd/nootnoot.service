@@ -1,0 +1,30 @@
+[Unit]
+Description=nootnoot ping monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Let systemd create a transient user with no entry in /etc/passwd.
+DynamicUser=yes
+
+# Create /var/log/nootnoot owned by this dynamic user
+LogsDirectory=nootnoot
+# StateDirectory=nootnoot
+# CacheDirectory=nootnoot
+
+# Path to the packaged binary
+ExecStart=/usr/bin/nootnoot --config /etc/nootnoot.toml
+
+# Restart policy
+Restart=on-failure
+RestartSec=5
+
+# Log to journald
+StandardOutput=journal
+StandardError=journal
+
+# Useful env vars
+Environment=RUST_LOG=info
+
+[Install]
+WantedBy=multi-user.target

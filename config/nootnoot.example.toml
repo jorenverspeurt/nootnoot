@@ -1,13 +1,7 @@
-# Configuration for the nootnoot tool
-# -----------------------------------
-
-# General settings
-# ----------------
-
 # Interval in seconds for summary logging
 summary_interval_secs = 600
 # Path to the main log file
-log_file = "/var/log/nootnoot.log"
+log_file = "/var/log/nootnoot/nootnoot.log"
 
 [web]
 # Enable the web server on the following bind address
@@ -18,11 +12,11 @@ name = "router"
 address = "192.168.1.1"
 up_interval_ms = 10_000
 down_interval_ms = 1_000
-detailed_log = "/var/log/nootnoot-router-detail.log"
+detailed_log = "/var/log/nootnoot/router-detail.log"
 
 [[hosts]]
 name = "server"
-address = "10.0.0.10"
+address = "example.org"
 up_interval_ms = 60_000
 down_interval_ms = 3_000
 # no detailed log for this one
