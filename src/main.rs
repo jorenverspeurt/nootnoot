@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, VecDeque},
-    fs::{OpenOptions},
+    fs::OpenOptions,
     io::{self, Write},
     path::{Path, PathBuf},
     process::Stdio,
@@ -8,19 +8,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::{Html, IntoResponse},
-    routing::get,
-    Json, Router,
-};
 use chrono::{DateTime, Utc};
 use clap::{ArgAction, Parser};
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::{net::TcpListener, process::Command, signal, sync::mpsc};
+use tokio::{process::Command, signal, sync::mpsc};
 
 mod webui;
 
@@ -114,10 +107,7 @@ impl Logger {
     }
 
     fn new_to_file(path: &Path) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
         Ok(Logger {
             inner: Arc::new(Mutex::new(Box::new(file) as Box<dyn Write + Send>)),
         })
@@ -138,21 +128,13 @@ struct DetailedLogger {
 
 impl DetailedLogger {
     fn new(path: &Path) -> io::Result<Self> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
         Ok(DetailedLogger {
             inner: Arc::new(Mutex::new(Box::new(file) as Box<dyn Write + Send>)),
         })
     }
 
-    fn log_ping(
-        &self,
-        timestamp: DateTime<Utc>,
-        reachable: bool,
-        latency_ms: Option<f64>,
-    ) {
+    fn log_ping(&self, timestamp: DateTime<Utc>, reachable: bool, latency_ms: Option<f64>) {
         let mut guard = self.inner.lock();
         let _ = writeln!(
             guard,
@@ -236,7 +218,7 @@ struct LatencySample {
 struct HostWebState {
     last_status: Option<bool>,
     reachability_events: VecDeque<ReachabilityEvent>, // limited to last 3 events
-    latency_samples: VecDeque<LatencySample>,        // last 3h
+    latency_samples: VecDeque<LatencySample>,         // last 3h
 }
 
 #[derive(Clone)]
@@ -260,9 +242,7 @@ impl WebState {
         const MAX_WINDOW: Duration = Duration::from_secs(3 * 60 * 60); // 3 hours
 
         let mut guard = self.inner.write();
-        let state = guard
-            .entry(sample.host_name.clone())
-            .or_insert_with(HostWebState::default);
+        let state = guard.entry(sample.host_name.clone()).or_default();
 
         // reachability change detection
         let prev_status = state.last_status;
@@ -360,7 +340,10 @@ fn find_default_config_file() -> Option<PathBuf> {
     None
 }
 
-fn load_config(args: &Args) -> Result<(Vec<HostConfig>, u64, Option<PathBuf>, Option<WebConfig>), ConfigError> {
+#[allow(clippy::type_complexity)]
+fn load_config(
+    args: &Args,
+) -> Result<(Vec<HostConfig>, u64, Option<PathBuf>, Option<WebConfig>), ConfigError> {
     // First priority: explicit --host
     if !args.host.is_empty() {
         let hosts = parse_cli_hosts(args)?;
@@ -413,16 +396,9 @@ fn load_config(args: &Args) -> Result<(Vec<HostConfig>, u64, Option<PathBuf>, Op
         })
     } else {
         // If CLI didn't force web, use file config as-is
-        if let Some(ref w) = cfg.web {
-            Some(WebConfig {
-                bind: args
-                    .web_bind
-                    .clone()
-                    .unwrap_or_else(|| w.bind.clone()),
-            })
-        } else {
-            None
-        }
+        cfg.web.as_ref().map(|w| WebConfig {
+            bind: args.web_bind.clone().unwrap_or_else(|| w.bind.clone()),
+        })
     };
 
     Ok((cfg.hosts, summary_interval, log_file, web_cfg))
@@ -656,6 +632,7 @@ async fn shutdown_signal() {
 
 // ============ main ============
 
+#[allow(suspicious_double_ref_op)]
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // simple tracing setup
@@ -693,7 +670,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_stats_aggregator(rx, stats_logger, summary_interval, stats_shutdown_rx).await;
     });
 
-
     // spawn web server if enabled
     let web_handle = if let (Some(cfg), Some(ref ws)) = (web_cfg.as_ref(), web_state.as_ref()) {
         let app = webui::build_router(ws.clone().clone());
@@ -714,7 +690,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await
                 .unwrap();
         }))
-
     } else {
         None
     };
@@ -959,15 +934,7 @@ down_interval_ms = 200
         let (sd_tx, sd_rx) = broadcast::channel(1);
 
         let task = tokio::spawn(async move {
-            run_host_task(
-                host,
-                logger,
-                None,
-                tx,
-                ws,
-                sd_rx,
-            )
-            .await;
+            run_host_task(host, logger, None, tx, ws, sd_rx).await;
         });
 
         // Wait for at least one sample

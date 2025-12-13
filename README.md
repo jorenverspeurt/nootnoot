@@ -1,14 +1,16 @@
 # nootnoot — Multi-Host Ping Monitor with Optional Web Dashboard
 
-`nootnoot` is a lightweight, efficient Rust daemon for monitoring the reachability and latency of multiple hosts.  
+`nootnoot` is a lightweight, efficient Rust daemon for monitoring the reachability and latency of multiple hosts.
 It is designed for **network monitoring**, and can run either:
 
-- as a **systemd service**, or  
+- as a **systemd service**, or
 - interactively from the **command line**.
 
 The tool can adapt its ping rate based on host availability, it logs reachability changes and latency summaries, and can optionally expose a simple **web dashboard** with recent status and latency history.
 
 `nootnoot` is licensed under the **BSD-3-Clause** license (see the **LICENSE** file).
+
+FYI: this project is developed with the help of AI-based tools.
 
 ---
 
@@ -16,36 +18,36 @@ The tool can adapt its ping rate based on host availability, it logs reachabilit
 
 ### ✔ Monitor multiple hosts
 Each host has configurable:
-- Address  
-- Ping interval when reachable (`up_interval_ms`)  
-- Ping interval when unreachable (`down_interval_ms`)  
-- Optional per-host detailed log file  
+- Address
+- Ping interval when reachable (`up_interval_ms`)
+- Ping interval when unreachable (`down_interval_ms`)
+- Optional per-host detailed log file
 
 ### ✔ Efficient & robust
-- Async Rust using Tokio  
-- Low CPU and memory usage  
+- Async Rust using Tokio
+- Low CPU and memory usage
 - Safe handling of shutdown (SIGTERM, Ctrl-C)
 
 ### ✔ Reachability & latency logging
-- Logs UP/DOWN events  
-- Logs periodic latency summaries (mean + stddev)  
+- Logs UP/DOWN events
+- Logs periodic latency summaries (mean + stddev)
 - Optional detailed per-ping logging
 
 ### ✔ Optional web dashboard
-- Shows 3 most recent reachability changes per host  
-- Shows last 3 hours of latency samples  
-- Auto-refresh HTML UI  
+- Shows 3 most recent reachability changes per host
+- Shows last 3 hours of latency samples
+- Auto-refresh HTML UI
 - JSON API at `/api/state`
 
 ### ✔ Flexible configuration
-- CLI arguments  
-- Config file (`./nootnoot.toml`, `~/.config/nootnoot.toml`, or `/etc/nootnoot.toml`)  
-- CLI overrides config  
+- CLI arguments
+- Config file (`./nootnoot.toml`, `~/.config/nootnoot.toml`, or `/etc/nootnoot.toml`)
+- CLI overrides config
 
 ### ✔ systemd integration
-- Uses `DynamicUser=yes`  
-- Uses `LogsDirectory=nootnoot` (systemd creates `/var/log/nootnoot/` automatically)  
-- No persistent service users, no manual directory management  
+- Uses `DynamicUser=yes`
+- Uses `LogsDirectory=nootnoot` (systemd creates `/var/log/nootnoot/` automatically)
+- No persistent service users, no manual directory management
 
 ---
 
@@ -182,5 +184,5 @@ cargo test
 
 ## License
 
-This project is licensed under the **BSD 3-Clause License**.  
+This project is licensed under the **BSD 3-Clause License**.
 See the **LICENSE** file for the full text.

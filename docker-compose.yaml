@@ -64,4 +64,3 @@ services:
           makepkg -si --noconfirm
         '
       "
-

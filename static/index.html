@@ -1,269 +1,299 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>nootnoot dashboard</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body class="min-h-screen bg-slate-950 text-slate-50">
-  <div class="max-w-6xl mx-auto px-4 py-6">
-    <header class="flex items-center justify-between mb-6">
-      <div>
-        <h1 class="text-3xl font-bold tracking-tight">nootnoot</h1>
-        <p class="text-slate-300 text-sm mt-1">
-          Multi-host ping monitor · live reachability & latency dashboard
-        </p>
-      </div>
-      <div class="flex gap-3 items-center">
-        <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span>
-          Live
-        </span>
-      </div>
-    </header>
+  <head>
+    <meta charset="utf-8" />
+    <title>nootnoot dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-50">
+    <div class="max-w-6xl mx-auto px-4 py-6">
+      <header class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-3xl font-bold tracking-tight">nootnoot</h1>
+          <p class="text-slate-300 text-sm mt-1">
+            Multi-host ping monitor · live reachability & latency dashboard
+          </p>
+        </div>
+        <div class="flex gap-3 items-center">
+          <span
+            class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
+          >
+            <span
+              class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"
+            ></span>
+            Live
+          </span>
+        </div>
+      </header>
 
-    <main>
-      <div id="hosts" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        <!-- host cards injected by JS -->
-      </div>
-    </main>
-  </div>
+      <main>
+        <div id="hosts" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <!-- host cards injected by JS -->
+        </div>
+      </main>
+    </div>
 
-  <script>
-    const charts = {};
+    <script>
+      const charts = {};
 
-    function statusBadge(status) {
-      if (status === true) {
-        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">UP</span>';
-      } else if (status === false) {
-        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/30">DOWN</span>';
-      } else {
-        return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-300 border border-slate-500/30">UNKNOWN</span>';
-      }
-    }
-
-    function formatTime(ts) {
-      const d = new Date(ts);
-      if (Number.isNaN(d.getTime())) return ts;
-      return d.toLocaleTimeString();
-    }
-
-    function computeStats(samples) {
-      const vals = samples
-        .map(s => s.latency_ms)
-        .filter(v => v !== null && !Number.isNaN(v));
-
-      const count = vals.length;
-      if (count === 0) {
-        return { count: 0, mean: null, stddev: null };
+      function statusBadge(status) {
+        if (status === true) {
+          return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">UP</span>';
+        } else if (status === false) {
+          return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/30">DOWN</span>';
+        } else {
+          return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-300 border border-slate-500/30">UNKNOWN</span>';
+        }
       }
 
-      const mean = vals.reduce((a, b) => a + b, 0) / count;
-      const variance = vals.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / (count > 1 ? (count - 1) : 1);
-      const stddev = Math.sqrt(variance);
+      function formatTime(ts) {
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return ts;
+        return d.toLocaleTimeString();
+      }
 
-      return { count, mean, stddev };
-    }
+      function computeStats(samples) {
+        const vals = samples
+          .map((s) => s.latency_ms)
+          .filter((v) => v !== null && !Number.isNaN(v));
 
-    function createHostCard(name, state) {
-      const card = document.createElement('div');
-      card.className = 'bg-slate-900/60 border border-slate-800 rounded-2xl shadow-lg shadow-black/40 p-4 flex flex-col gap-3';
+        const count = vals.length;
+        if (count === 0) {
+          return { count: 0, mean: null, stddev: null };
+        }
 
-      const header = document.createElement('div');
-      header.className = 'flex items-center justify-between gap-2';
+        const mean = vals.reduce((a, b) => a + b, 0) / count;
+        const variance =
+          vals.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) /
+          (count > 1 ? count - 1 : 1);
+        const stddev = Math.sqrt(variance);
 
-      const title = document.createElement('div');
-      title.innerHTML = '<h2 class="font-semibold text-lg text-slate-50 truncate">' + name + '</h2>';
+        return { count, mean, stddev };
+      }
 
-      const status = document.createElement('div');
-      status.innerHTML = statusBadge(state.last_status);
+      function createHostCard(name, state) {
+        const card = document.createElement("div");
+        card.className =
+          "bg-slate-900/60 border border-slate-800 rounded-2xl shadow-lg shadow-black/40 p-4 flex flex-col gap-3";
 
-      header.appendChild(title);
-      header.appendChild(status);
+        const header = document.createElement("div");
+        header.className = "flex items-center justify-between gap-2";
 
-      const body = document.createElement('div');
-      body.className = 'space-y-3';
+        const title = document.createElement("div");
+        title.innerHTML =
+          '<h2 class="font-semibold text-lg text-slate-50 truncate">' +
+          name +
+          "</h2>";
 
-      // Recent reachability changes
-      const eventsSection = document.createElement('div');
-      const eventsTitle = document.createElement('div');
-      eventsTitle.className = 'text-xs font-medium text-slate-400 uppercase tracking-wide';
-      eventsTitle.textContent = 'Recent reachability changes';
+        const status = document.createElement("div");
+        status.innerHTML = statusBadge(state.last_status);
 
-      const eventsList = document.createElement('ul');
-      eventsList.className = 'mt-1 space-y-1 text-xs text-slate-300';
+        header.appendChild(title);
+        header.appendChild(status);
 
-      if (state.reachability_events.length === 0) {
-        const li = document.createElement('li');
-        li.textContent = 'No changes recorded yet.';
-        li.className = 'text-slate-500';
-        eventsList.appendChild(li);
-      } else {
-        state.reachability_events.forEach(ev => {
-          const li = document.createElement('li');
-          li.innerHTML =
-            '<span class="font-mono text-[11px] text-slate-400">' + ev.timestamp + '</span>' +
-            ' · ' +
-            (ev.reachable
-              ? '<span class="text-emerald-300 font-semibold">UP</span>'
-              : '<span class="text-rose-300 font-semibold">DOWN</span>');
+        const body = document.createElement("div");
+        body.className = "space-y-3";
+
+        // Recent reachability changes
+        const eventsSection = document.createElement("div");
+        const eventsTitle = document.createElement("div");
+        eventsTitle.className =
+          "text-xs font-medium text-slate-400 uppercase tracking-wide";
+        eventsTitle.textContent = "Recent reachability changes";
+
+        const eventsList = document.createElement("ul");
+        eventsList.className = "mt-1 space-y-1 text-xs text-slate-300";
+
+        if (state.reachability_events.length === 0) {
+          const li = document.createElement("li");
+          li.textContent = "No changes recorded yet.";
+          li.className = "text-slate-500";
           eventsList.appendChild(li);
+        } else {
+          state.reachability_events.forEach((ev) => {
+            const li = document.createElement("li");
+            li.innerHTML =
+              '<span class="font-mono text-[11px] text-slate-400">' +
+              ev.timestamp +
+              "</span>" +
+              " · " +
+              (ev.reachable
+                ? '<span class="text-emerald-300 font-semibold">UP</span>'
+                : '<span class="text-rose-300 font-semibold">DOWN</span>');
+            eventsList.appendChild(li);
+          });
+        }
+
+        eventsSection.appendChild(eventsTitle);
+        eventsSection.appendChild(eventsList);
+
+        // Summary stats
+        const stats = computeStats(state.latency_samples);
+        const statsSection = document.createElement("div");
+        statsSection.className =
+          "flex items-center justify-between text-[11px] text-slate-400 border border-slate-800 rounded-xl px-3 py-2 bg-slate-950/40";
+
+        const left = document.createElement("div");
+        left.innerHTML =
+          '<div class="font-medium text-xs text-slate-300">Latency summary</div>' +
+          '<div class="text-[11px] text-slate-400">Last 3h of samples</div>';
+
+        const right = document.createElement("div");
+        if (stats.count === 0) {
+          right.innerHTML = '<span class="text-slate-500">No data yet</span>';
+        } else {
+          right.innerHTML =
+            '<div class="flex gap-3">' +
+            '<div><span class="text-slate-500">N</span> <span class="font-mono">' +
+            stats.count +
+            "</span></div>" +
+            '<div><span class="text-slate-500">μ</span> <span class="font-mono">' +
+            stats.mean.toFixed(1) +
+            " ms</span></div>" +
+            '<div><span class="text-slate-500">σ</span> <span class="font-mono">' +
+            stats.stddev.toFixed(1) +
+            " ms</span></div>" +
+            "</div>";
+        }
+
+        statsSection.appendChild(left);
+        statsSection.appendChild(right);
+
+        // Latency chart container
+        const chartSection = document.createElement("div");
+        const chartTitle = document.createElement("div");
+        chartTitle.className =
+          "flex items-center justify-between text-xs text-slate-400";
+        chartTitle.innerHTML =
+          '<span class="font-medium uppercase tracking-wide">Latency (ms, last 3h)</span>';
+
+        const canvasWrapper = document.createElement("div");
+        canvasWrapper.className = "mt-2 h-32";
+        const canvas = document.createElement("canvas");
+        const chartId = "chart-" + name.replace(/[^a-zA-Z0-9_-]/g, "_");
+        canvas.id = chartId;
+        canvasWrapper.appendChild(canvas);
+
+        chartSection.appendChild(chartTitle);
+        chartSection.appendChild(canvasWrapper);
+
+        body.appendChild(eventsSection);
+        body.appendChild(statsSection);
+        body.appendChild(chartSection);
+
+        card.appendChild(header);
+        card.appendChild(body);
+
+        return { card, chartId };
+      }
+
+      function renderChart(chartId, state) {
+        const ctx = document.getElementById(chartId)?.getContext("2d");
+        if (!ctx) return;
+
+        const labels = state.latency_samples.map((s) =>
+          formatTime(s.timestamp),
+        );
+        const values = state.latency_samples.map((s) =>
+          s.latency_ms === null ? null : s.latency_ms,
+        );
+
+        if (charts[chartId]) {
+          charts[chartId].destroy();
+        }
+
+        charts[chartId] = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels,
+            datasets: [
+              {
+                label: "Latency (ms)",
+                data: values,
+                spanGaps: true,
+                tension: 0.2,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: false,
+              },
+              tooltip: {
+                mode: "nearest",
+                intersect: false,
+              },
+            },
+            scales: {
+              x: {
+                display: true,
+                ticks: {
+                  maxTicksLimit: 6,
+                  autoSkip: true,
+                  color: "#9ca3af",
+                  font: { size: 10 },
+                },
+                grid: {
+                  display: false,
+                },
+              },
+              y: {
+                ticks: {
+                  color: "#cbd5f5",
+                  font: { size: 10 },
+                },
+                grid: {
+                  color: "rgba(148, 163, 184, 0.2)",
+                },
+              },
+            },
+            elements: {
+              point: {
+                radius: 0,
+              },
+            },
+          },
         });
       }
 
-      eventsSection.appendChild(eventsTitle);
-      eventsSection.appendChild(eventsList);
+      async function refresh() {
+        try {
+          const res = await fetch("/api/state");
+          if (!res.ok) return;
+          const data = await res.json();
+          const container = document.getElementById("hosts");
+          container.innerHTML = "";
 
-      // Summary stats
-      const stats = computeStats(state.latency_samples);
-      const statsSection = document.createElement('div');
-      statsSection.className = 'flex items-center justify-between text-[11px] text-slate-400 border border-slate-800 rounded-xl px-3 py-2 bg-slate-950/40';
-
-      const left = document.createElement('div');
-      left.innerHTML =
-        '<div class="font-medium text-xs text-slate-300">Latency summary</div>' +
-        '<div class="text-[11px] text-slate-400">Last 3h of samples</div>';
-
-      const right = document.createElement('div');
-      if (stats.count === 0) {
-        right.innerHTML = '<span class="text-slate-500">No data yet</span>';
-      } else {
-        right.innerHTML =
-          '<div class="flex gap-3">' +
-            '<div><span class="text-slate-500">N</span> <span class="font-mono">' + stats.count + '</span></div>' +
-            '<div><span class="text-slate-500">μ</span> <span class="font-mono">' + stats.mean.toFixed(1) + ' ms</span></div>' +
-            '<div><span class="text-slate-500">σ</span> <span class="font-mono">' + stats.stddev.toFixed(1) + ' ms</span></div>' +
-          '</div>';
-      }
-
-      statsSection.appendChild(left);
-      statsSection.appendChild(right);
-
-      // Latency chart container
-      const chartSection = document.createElement('div');
-      const chartTitle = document.createElement('div');
-      chartTitle.className = 'flex items-center justify-between text-xs text-slate-400';
-      chartTitle.innerHTML = '<span class="font-medium uppercase tracking-wide">Latency (ms, last 3h)</span>';
-
-      const canvasWrapper = document.createElement('div');
-      canvasWrapper.className = 'mt-2 h-32';
-      const canvas = document.createElement('canvas');
-      const chartId = 'chart-' + name.replace(/[^a-zA-Z0-9_-]/g, '_');
-      canvas.id = chartId;
-      canvasWrapper.appendChild(canvas);
-
-      chartSection.appendChild(chartTitle);
-      chartSection.appendChild(canvasWrapper);
-
-      body.appendChild(eventsSection);
-      body.appendChild(statsSection);
-      body.appendChild(chartSection);
-
-      card.appendChild(header);
-      card.appendChild(body);
-
-      return { card, chartId };
-    }
-
-    function renderChart(chartId, state) {
-      const ctx = document.getElementById(chartId)?.getContext('2d');
-      if (!ctx) return;
-
-      const labels = state.latency_samples.map(s => formatTime(s.timestamp));
-      const values = state.latency_samples.map(s => (s.latency_ms === null ? null : s.latency_ms));
-
-      if (charts[chartId]) {
-        charts[chartId].destroy();
-      }
-
-      charts[chartId] = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [{
-            label: 'Latency (ms)',
-            data: values,
-            spanGaps: true,
-            tension: 0.2,
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: false
-            },
-            tooltip: {
-              mode: 'nearest',
-              intersect: false,
-            }
-          },
-          scales: {
-            x: {
-              display: true,
-              ticks: {
-                maxTicksLimit: 6,
-                autoSkip: true,
-                color: '#9ca3af',
-                font: { size: 10 },
-              },
-              grid: {
-                display: false,
-              }
-            },
-            y: {
-              ticks: {
-                color: '#cbd5f5',
-                font: { size: 10 },
-              },
-              grid: {
-                color: 'rgba(148, 163, 184, 0.2)',
-              }
-            }
-          },
-          elements: {
-            point: {
-              radius: 0
-            }
+          const entries = Object.entries(data);
+          if (entries.length === 0) {
+            const empty = document.createElement("div");
+            empty.className =
+              "col-span-full text-center text-slate-500 text-sm border border-dashed border-slate-700 rounded-xl py-10";
+            empty.textContent =
+              "No hosts configured yet. Start nootnoot with at least one host.";
+            container.appendChild(empty);
+            return;
           }
-        }
-      });
-    }
 
-    async function refresh() {
-      try {
-        const res = await fetch('/api/state');
-        if (!res.ok) return;
-        const data = await res.json();
-        const container = document.getElementById('hosts');
-        container.innerHTML = '';
-
-        const entries = Object.entries(data);
-        if (entries.length === 0) {
-          const empty = document.createElement('div');
-          empty.className = 'col-span-full text-center text-slate-500 text-sm border border-dashed border-slate-700 rounded-xl py-10';
-          empty.textContent = 'No hosts configured yet. Start nootnoot with at least one host.';
-          container.appendChild(empty);
-          return;
+          for (const [name, st] of entries) {
+            const { card, chartId } = createHostCard(name, st);
+            container.appendChild(card);
+            renderChart(chartId, st);
+          }
+        } catch (e) {
+          console.error("Error refreshing dashboard:", e);
         }
-
-        for (const [name, st] of entries) {
-          const { card, chartId } = createHostCard(name, st);
-          container.appendChild(card);
-          renderChart(chartId, st);
-        }
-      } catch (e) {
-        console.error('Error refreshing dashboard:', e);
       }
-    }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      refresh();
-      setInterval(refresh, 5000);
-    });
-  </script>
-</body>
+      document.addEventListener("DOMContentLoaded", () => {
+        refresh();
+        setInterval(refresh, 5000);
+      });
+    </script>
+  </body>
 </html>
