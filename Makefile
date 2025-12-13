@@ -16,7 +16,7 @@ install: build
 
 	# Install config if not present
 	if [ ! -f "$(CONFIG_PATH)" ]; then \
-	  sudo install -Dm644 config/nootnoot.toml.example $(CONFIG_PATH); \
+	  sudo install -Dm644 config/nootnoot.example.toml $(CONFIG_PATH); \
 	fi
 
 	# Install systemd unit
@@ -24,8 +24,9 @@ install: build
 	  $(SYSTEMD_DIR)/nootnoot.service
 
 	# Reload and enable/start
-	sudo systemctl daemon-reload
-	sudo systemctl enable --now nootnoot.service
+	@echo "To enable and start the nootnoot service, run:"
+	@echo "sudo systemctl daemon-reload"
+	@echo "sudo systemctl enable --now nootnoot.service"
 
 uninstall:
 	- sudo systemctl stop nootnoot.service
@@ -38,7 +39,7 @@ uninstall:
 # User-mode systemd service (no root)
 install-user: build
 	install -Dm755 target/release/$(BINARY_NAME) $$HOME/.local/bin/$(BINARY_NAME)
-	install -Dm644 config/nootnoot.toml.example $$HOME/.config/nootnoot.toml
+	install -Dm644 config/nootnoot.example.toml $$HOME/.config/nootnoot.toml
 	install -Dm644 packaging/systemd/nootnoot.service \
 	  $$HOME/.config/systemd/user/nootnoot.service
 

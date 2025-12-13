@@ -30,15 +30,24 @@ services:
     working_dir: /src
     volumes:
       - .:/src
-    command: >
-      bash -lc "
-        apt-get update &&
-        apt-get install -y build-essential pkg-config libssl-dev curl &&
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y &&
-        source $HOME/.cargo/env &&
-        make install &&
+    entrypoint: /bin/bash
+    command:
+      - -lc
+      - |
+        set -euo pipefail
+        apt-get update
+        apt-get install -y --no-install-recommends \
+          build-essential \
+          pkg-config \
+          ca-certificates \
+          curl \
+          sudo # We don't actually need it, but make install expects it to be there
+        # Install latest stable Rust (includes cargo) via rustup
+        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+        source $$HOME/.cargo/env
+        cargo --version
+        make install
         nootnoot --help
-      "
 
   arch-pkg-test:
     image: archlinux:base-devel
@@ -61,6 +70,6 @@ services:
         # Run makepkg as 'builder' (no password prompt because we're root)
         su - builder -s /bin/bash -c '
           cd /src/packaging/arch &&
-          makepkg -si --noconfirm
+          makepkg -s --noconfirm
         '
       "

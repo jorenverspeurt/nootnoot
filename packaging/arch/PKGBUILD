@@ -1,5 +1,5 @@
 pkgname=nootnoot-git
-pkgver=0.1.0.r0.g0000000
+pkgver=0.4.1.r15.gd34dbe7
 pkgrel=1
 pkgdesc="Multi-host ping monitor with optional web dashboard (development git version)"
 arch=('x86_64')
