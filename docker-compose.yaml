@@ -22,7 +22,7 @@ services:
       - "8081:8080"
 
     # Override default CMD to ensure web is on
-    command: ["--config", "/etc/nootnoot.toml", "--web", "--web-bind", "0.0.0.0:8080"]
+    command: ["--config", "/etc/nootnoot.toml", "--web", "0.0.0.0:8080"]
 
   ubuntu-install-test:
     image: ubuntu:24.04

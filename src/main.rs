@@ -3,17 +3,16 @@ use std::{
     fs::OpenOptions,
     io::{self, Write},
     path::{Path, PathBuf},
-    process::Stdio,
     sync::Arc,
     time::{Duration, Instant},
 };
 
 use chrono::{DateTime, Utc};
-use clap::{ArgAction, Parser};
+use clap::Parser;
 use parking_lot::{Mutex, RwLock};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::{process::Command, signal, sync::mpsc};
+use tokio::{signal, sync::mpsc};
 
 mod webui;
 
@@ -27,8 +26,9 @@ struct Args {
     #[arg(short, long)]
     config: Option<PathBuf>,
 
-    /// Host specification: name,addr,up_ms,down_ms (can be repeated)
-    /// Example: --host "router,192.168.0.1,1000,3000"
+    /// Host specification: name,addr,up,down (can be repeated)
+    /// Intervals accept ms or durations like "5s", "1m", "500ms"
+    /// Example: --host "router,192.168.0.1,10s,1s"
     #[arg(long)]
     host: Vec<String>,
 
@@ -36,13 +36,10 @@ struct Args {
     #[arg(long)]
     log_file: Option<PathBuf>,
 
-    /// Enable web dashboard (overrides config)
-    #[arg(long, action = ArgAction::SetTrue)]
-    web: bool,
-
-    /// Bind address for web dashboard, e.g. 0.0.0.0:8080
-    #[arg(long)]
-    web_bind: Option<String>,
+    /// Enable web dashboard, optionally with a bind address (default: 127.0.0.1:8080)
+    /// Example: --web or --web 0.0.0.0:8080
+    #[arg(long, num_args = 0..=1, default_missing_value = "127.0.0.1:8080")]
+    web: Option<String>,
 
     /// Summary interval in seconds (overrides config)
     #[arg(long)]
@@ -69,13 +66,103 @@ fn default_summary_interval() -> u64 {
     60
 }
 
+/// Parse a duration string into milliseconds.
+/// Accepts plain integers (treated as ms) or strings like "500ms", "5s", "1m", "1m30s", "2h".
+fn parse_duration_ms(s: &str) -> Option<u64> {
+    // Plain integer → milliseconds
+    if let Ok(v) = s.parse::<u64>() {
+        return Some(v);
+    }
+
+    let mut total: u64 = 0;
+    let mut num_buf = String::new();
+    let mut chars = s.chars().peekable();
+
+    while chars.peek().is_some() {
+        // Collect digits
+        while let Some(&c) = chars.peek() {
+            if c.is_ascii_digit() {
+                num_buf.push(c);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        if num_buf.is_empty() {
+            return None;
+        }
+        // Collect unit
+        let mut unit = String::new();
+        while let Some(&c) = chars.peek() {
+            if c.is_ascii_alphabetic() {
+                unit.push(c);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        let num: u64 = num_buf.parse().ok()?;
+        num_buf.clear();
+        match unit.as_str() {
+            "ms" => total += num,
+            "s" => total += num * 1000,
+            "m" => total += num * 60_000,
+            "h" => total += num * 3_600_000,
+            _ => return None,
+        }
+    }
+
+    if total == 0 {
+        None
+    } else {
+        Some(total)
+    }
+}
+
+fn deserialize_duration_ms<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de;
+
+    struct DurationVisitor;
+
+    impl<'de> de::Visitor<'de> for DurationVisitor {
+        type Value = u64;
+
+        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            f.write_str("a duration in ms (integer) or a string like \"5s\", \"1m\", \"500ms\"")
+        }
+
+        fn visit_u64<E: de::Error>(self, v: u64) -> Result<u64, E> {
+            Ok(v)
+        }
+
+        fn visit_i64<E: de::Error>(self, v: i64) -> Result<u64, E> {
+            if v >= 0 {
+                Ok(v as u64)
+            } else {
+                Err(E::custom("duration must be non-negative"))
+            }
+        }
+
+        fn visit_str<E: de::Error>(self, v: &str) -> Result<u64, E> {
+            parse_duration_ms(v).ok_or_else(|| E::custom(format!("invalid duration: {v}")))
+        }
+    }
+
+    deserializer.deserialize_any(DurationVisitor)
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct HostConfig {
     name: String,
     address: String,
-    /// Ping interval in ms when host is reachable
+    /// Ping interval when host is reachable (ms or e.g. "5s", "1m")
+    #[serde(deserialize_with = "deserialize_duration_ms")]
     up_interval_ms: u64,
-    /// Ping interval in ms when host is not reachable
+    /// Ping interval when host is not reachable (ms or e.g. "1s", "500ms")
+    #[serde(deserialize_with = "deserialize_duration_ms")]
     down_interval_ms: u64,
     /// Optional detailed log file for all pings
     detailed_log: Option<PathBuf>,
@@ -214,11 +301,13 @@ struct LatencySample {
     latency_ms: Option<f64>,
 }
 
-#[derive(Debug, Default, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct HostWebState {
     last_status: Option<bool>,
-    reachability_events: VecDeque<ReachabilityEvent>, // limited to last 3 events
-    latency_samples: VecDeque<LatencySample>,         // last 3h
+    up_interval_ms: u64,
+    down_interval_ms: u64,
+    reachability_events: VecDeque<ReachabilityEvent>,
+    latency_samples: VecDeque<LatencySample>,
 }
 
 #[derive(Clone)]
@@ -230,7 +319,16 @@ impl WebState {
     fn new(hosts: &[HostConfig]) -> Self {
         let mut map = HashMap::new();
         for h in hosts {
-            map.insert(h.name.clone(), HostWebState::default());
+            map.insert(
+                h.name.clone(),
+                HostWebState {
+                    last_status: None,
+                    up_interval_ms: h.up_interval_ms,
+                    down_interval_ms: h.down_interval_ms,
+                    reachability_events: VecDeque::new(),
+                    latency_samples: VecDeque::new(),
+                },
+            );
         }
         WebState {
             inner: Arc::new(RwLock::new(map)),
@@ -238,11 +336,13 @@ impl WebState {
     }
 
     fn update_from_sample(&self, sample: &PingSample) {
-        const MAX_REACHABILITY_EVENTS: usize = 3;
-        const MAX_WINDOW: Duration = Duration::from_secs(3 * 60 * 60); // 3 hours
+        const MAX_REACHABILITY_EVENTS: usize = 50;
+        const MAX_WINDOW: Duration = Duration::from_secs(24 * 60 * 60); // 24 hours
 
         let mut guard = self.inner.write();
-        let state = guard.entry(sample.host_name.clone()).or_default();
+        let Some(state) = guard.get_mut(&sample.host_name) else {
+            return;
+        };
 
         // reachability change detection
         let prev_status = state.last_status;
@@ -292,12 +392,10 @@ fn parse_cli_hosts(args: &Args) -> Result<Vec<HostConfig>, ConfigError> {
         }
         let name = parts[0].to_string();
         let address = parts[1].to_string();
-        let up_interval_ms: u64 = parts[2]
-            .parse()
-            .map_err(|_| ConfigError::InvalidHostArg(hs.clone()))?;
-        let down_interval_ms: u64 = parts[3]
-            .parse()
-            .map_err(|_| ConfigError::InvalidHostArg(hs.clone()))?;
+        let up_interval_ms: u64 =
+            parse_duration_ms(parts[2]).ok_or_else(|| ConfigError::InvalidHostArg(hs.clone()))?;
+        let down_interval_ms: u64 =
+            parse_duration_ms(parts[3]).ok_or_else(|| ConfigError::InvalidHostArg(hs.clone()))?;
         hosts.push(HostConfig {
             name,
             address,
@@ -353,16 +451,10 @@ fn load_config(
 
         let summary = args.summary_interval.unwrap_or(default_summary_interval());
 
-        let web_cfg = if args.web {
-            Some(WebConfig {
-                bind: args
-                    .web_bind
-                    .clone()
-                    .unwrap_or_else(|| "127.0.0.1:8080".to_string()),
-            })
-        } else {
-            None
-        };
+        let web_cfg = args
+            .web
+            .as_ref()
+            .map(|bind| WebConfig { bind: bind.clone() });
 
         return Ok((hosts, summary, args.log_file.clone(), web_cfg));
     }
@@ -386,25 +478,23 @@ fn load_config(
     let summary_interval = args.summary_interval.unwrap_or(cfg.summary_interval_secs);
     let log_file = args.log_file.clone().or(cfg.log_file.clone());
 
-    let web_cfg = if args.web {
-        Some(WebConfig {
-            bind: args
-                .web_bind
-                .clone()
-                .or_else(|| cfg.web.as_ref().map(|w| w.bind.clone()))
-                .unwrap_or_else(|| "127.0.0.1:8080".to_string()),
-        })
+    let web_cfg = if let Some(ref bind) = args.web {
+        // CLI --web overrides config
+        Some(WebConfig { bind: bind.clone() })
     } else {
-        // If CLI didn't force web, use file config as-is
-        cfg.web.as_ref().map(|w| WebConfig {
-            bind: args.web_bind.clone().unwrap_or_else(|| w.bind.clone()),
-        })
+        // If CLI didn't specify --web, use file config as-is
+        cfg.web
     };
 
     Ok((cfg.hosts, summary_interval, log_file, web_cfg))
 }
 
 // ============ Ping implementation ============
+
+#[cfg(not(test))]
+use std::process::Stdio;
+#[cfg(not(test))]
+use tokio::process::Command;
 
 #[cfg(not(test))]
 async fn ping_once(address: &str, timeout: Duration) -> io::Result<Option<f64>> {
@@ -761,10 +851,9 @@ mod tests {
     fn parse_cli_hosts_works() {
         let args = crate::Args {
             config: None,
-            host: vec!["router,1.2.3.4,1000,5000".to_string()],
+            host: vec!["router,1.2.3.4,5000,1000".to_string()],
             log_file: None,
-            web: false,
-            web_bind: None,
+            web: None,
             summary_interval: None,
         };
 
@@ -775,8 +864,8 @@ mod tests {
         let h = &hosts[0];
         assert_eq!(h.name, "router");
         assert_eq!(h.address, "1.2.3.4");
-        assert_eq!(h.up_interval_ms, 1000);
-        assert_eq!(h.down_interval_ms, 5000);
+        assert_eq!(h.up_interval_ms, 5000);
+        assert_eq!(h.down_interval_ms, 1000);
 
         assert_eq!(summary_interval, default_summary_interval());
         assert!(log_file.is_none());
@@ -806,8 +895,7 @@ down_interval_ms = 200
             config: Some(path),
             host: Vec::new(),
             log_file: None,
-            web: false,
-            web_bind: None,
+            web: None,
             summary_interval: None,
         };
 

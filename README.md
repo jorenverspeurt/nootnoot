@@ -34,8 +34,10 @@ Each host has configurable:
 - Optional detailed per-ping logging
 
 ### ✔ Optional web dashboard
-- Shows 3 most recent reachability changes per host
-- Shows last 3 hours of latency samples
+- Status history shown as time periods with expandable dropdown
+- Latency chart with adjustable time window (3 min to 24 hours)
+- Focus mode for individual hosts
+- Works fully offline (no external CDN dependencies)
 - Auto-refresh HTML UI
 - JSON API at `/api/state`
 
@@ -102,7 +104,7 @@ sudo cp target/release/nootnoot /usr/local/bin/
 ## Usage (Command Line)
 
 ```bash
-nootnoot   --host "router,192.168.0.1,1000,5000"   --host "server,10.0.0.10,1000,3000"   --web   --web-bind 0.0.0.0:8080
+nootnoot   --host "router,192.168.0.1,10s,1s"   --host "server,10.0.0.10,1m,3s"   --web 0.0.0.0:8080
 ```
 
 ### Key CLI Options
@@ -110,10 +112,9 @@ nootnoot   --host "router,192.168.0.1,1000,5000"   --host "server,10.0.0.10,1000
 | Option | Description |
 |--------|-------------|
 | `--config <path>` | Path to configuration file |
-| `--host "name,address,up_ms,down_ms"` | Add a host (repeatable) |
+| `--host "name,address,up,down"` | Add a host (repeatable); intervals accept ms or e.g. `5s`, `1m` |
 | `--log-file <path>` | Override log output |
-| `--web` | Enable web dashboard |
-| `--web-bind <host:port>` | Bind address for dashboard |
+| `--web [host:port]` | Enable web dashboard (default: 127.0.0.1:8080) |
 | `--summary-interval <seconds>` | Summary logging interval |
 
 ---
@@ -129,21 +130,21 @@ summary_interval_secs = 600
 log_file = "/var/log/nootnoot/nootnoot.log"
 
 [web]
-# Enable the web server on the following bind address
+# Enable the web dashboard on the following bind address
 bind = "0.0.0.0:8080"
 
 [[hosts]]
 name = "router"
 address = "192.168.1.1"
-up_interval_ms = 10_000
-down_interval_ms = 1_000
+up_interval_ms = "10s"     # 10s when reachable
+down_interval_ms = "1s"    # 1s when unreachable (detect recovery quickly)
 detailed_log = "/var/log/nootnoot/router-detail.log"
 
 [[hosts]]
 name = "server"
 address = "example.org"
-up_interval_ms = 60_000
-down_interval_ms = 3_000
+up_interval_ms = "1m"      # 60s when reachable
+down_interval_ms = "3s"    # 3s when unreachable
 # no detailed log for this one
 ```
 

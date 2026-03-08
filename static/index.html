@@ -4,292 +4,855 @@
     <meta charset="utf-8" />
     <title>nootnoot dashboard</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        min-height: 100vh;
+        background: #080d1b;
+        color: #e2e8f0;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+        line-height: 1.5;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 1.5rem 1rem;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+      }
+      header h1 {
+        font-size: 1.75rem;
+        font-weight: 700;
+        letter-spacing: -0.025em;
+      }
+      .subtitle {
+        color: #94a3b8;
+        font-size: 0.8rem;
+        margin-top: 0.15rem;
+      }
+      .badge-live {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        font-weight: 500;
+        background: rgba(16, 185, 129, 0.1);
+        color: #6ee7b7;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .badge-live .dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: #34d399;
+        margin-right: 0.5rem;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+      #focused-area {
+        margin-bottom: 1rem;
+      }
+      #grid-area {
+        display: grid;
+        gap: 1rem;
+        grid-template-columns: 1fr;
+      }
+      @media (min-width: 768px) {
+        #grid-area {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+      @media (min-width: 1200px) {
+        #grid-area {
+          grid-template-columns: repeat(3, 1fr);
+        }
+      }
+      .card {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid #1e293b;
+        border-radius: 1rem;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+        transition: border-color 0.2s;
+      }
+      .card.clickable {
+        cursor: pointer;
+      }
+      .card.clickable:hover {
+        border-color: #334155;
+      }
+      .card-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+      .card-header h2 {
+        font-size: 1.1rem;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .card.focused .card-header h2 {
+        font-size: 1.3rem;
+      }
+      .hdr-right {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+      .badge-up,
+      .badge-down,
+      .badge-unk {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.15rem 0.5rem;
+        border-radius: 9999px;
+        font-size: 0.7rem;
+        font-weight: 600;
+      }
+      .badge-up {
+        background: rgba(16, 185, 129, 0.1);
+        color: #6ee7b7;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+      }
+      .badge-down {
+        background: rgba(244, 63, 94, 0.1);
+        color: #fda4af;
+        border: 1px solid rgba(244, 63, 94, 0.3);
+      }
+      .badge-unk {
+        background: rgba(100, 116, 139, 0.1);
+        color: #94a3b8;
+        border: 1px solid rgba(100, 116, 139, 0.3);
+      }
+      .focus-btn {
+        background: none;
+        border: 1px solid #334155;
+        color: #94a3b8;
+        border-radius: 0.375rem;
+        padding: 0.15rem 0.5rem;
+        font-size: 0.65rem;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          color 0.15s;
+      }
+      .focus-btn:hover {
+        background: #1e293b;
+        color: #e2e8f0;
+      }
+      .stitle {
+        font-size: 0.65rem;
+        font-weight: 500;
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .periods {
+        list-style: none;
+        margin-top: 0.25rem;
+        font-size: 0.75rem;
+        color: #cbd5e1;
+      }
+      .periods li {
+        padding: 0.12rem 0;
+        display: flex;
+        align-items: baseline;
+        gap: 0.45rem;
+      }
+      .s-up {
+        color: #6ee7b7;
+        font-weight: 600;
+        min-width: 2.8em;
+      }
+      .s-dn {
+        color: #fda4af;
+        font-weight: 600;
+        min-width: 2.8em;
+      }
+      .ts {
+        color: #94a3b8;
+        font-family: monospace;
+        font-size: 0.68rem;
+      }
+      .ts-now {
+        color: #64748b;
+      }
+      .intervals {
+        display: inline-flex;
+        gap: 0.6rem;
+        font-size: 0.68rem;
+        color: #64748b;
+        font-family: monospace;
+        margin-top: 0.1rem;
+      }
+      .intervals span {
+        color: #94a3b8;
+      }
+      .more-btn {
+        background: none;
+        border: none;
+        color: #60a5fa;
+        font-size: 0.7rem;
+        cursor: pointer;
+        padding: 0.2rem 0;
+      }
+      .more-btn:hover {
+        color: #93c5fd;
+        text-decoration: underline;
+      }
+      .stats-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 0.7rem;
+        color: #64748b;
+        border: 1px solid #1e293b;
+        border-radius: 0.75rem;
+        padding: 0.5rem 0.75rem;
+        background: rgba(2, 6, 23, 0.4);
+      }
+      .sl {
+        color: #94a3b8;
+        font-size: 0.75rem;
+      }
+      .m {
+        font-family: monospace;
+      }
+      .mu {
+        color: #475569;
+      }
+      .chart-sec {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      .chart-ctrl {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+      .cw {
+        height: 8rem;
+        position: relative;
+      }
+      .card.focused .cw {
+        height: 14rem;
+      }
+      .cw canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .sw {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.65rem;
+        color: #64748b;
+      }
+      .sw input[type="range"] {
+        width: 80px;
+        height: 4px;
+        accent-color: #60a5fa;
+        background: #1e293b;
+        border-radius: 2px;
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+      }
+      .sw input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #60a5fa;
+        cursor: pointer;
+      }
+      .sw input[type="range"]::-moz-range-thumb {
+        width: 12px;
+        height: 12px;
+        border: none;
+        border-radius: 50%;
+        background: #60a5fa;
+        cursor: pointer;
+      }
+      .card.focused .sw input[type="range"] {
+        width: 140px;
+      }
+      .swl {
+        font-family: monospace;
+        color: #94a3b8;
+        min-width: 2.5rem;
+        text-align: right;
+      }
+      .empty {
+        grid-column: 1/-1;
+        text-align: center;
+        color: #475569;
+        font-size: 0.85rem;
+        border: 1px dashed #334155;
+        border-radius: 0.75rem;
+        padding: 2.5rem 1rem;
+      }
+    </style>
   </head>
-  <body class="min-h-screen bg-slate-950 text-slate-50">
-    <div class="max-w-6xl mx-auto px-4 py-6">
-      <header class="flex items-center justify-between mb-6">
+  <body>
+    <div class="container">
+      <header>
         <div>
-          <h1 class="text-3xl font-bold tracking-tight">nootnoot</h1>
-          <p class="text-slate-300 text-sm mt-1">
-            Multi-host ping monitor · live reachability & latency dashboard
+          <h1>nootnoot</h1>
+          <p class="subtitle">
+            Multi-host ping monitor &middot; live reachability &amp; latency
+            dashboard
           </p>
         </div>
-        <div class="flex gap-3 items-center">
-          <span
-            class="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/30"
-          >
-            <span
-              class="w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"
-            ></span>
-            Live
-          </span>
-        </div>
+        <span class="badge-live"><span class="dot"></span>Live</span>
       </header>
-
-      <main>
-        <div id="hosts" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <!-- host cards injected by JS -->
-        </div>
-      </main>
+      <div id="focused-area"></div>
+      <div id="grid-area"></div>
     </div>
-
     <script>
-      const charts = {};
+      "use strict";
 
-      function statusBadge(status) {
-        if (status === true) {
-          return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">UP</span>';
-        } else if (status === false) {
-          return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-rose-500/10 text-rose-300 border border-rose-500/30">DOWN</span>';
-        } else {
-          return '<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-300 border border-slate-500/30">UNKNOWN</span>';
-        }
+      /* ---- state ---- */
+      let D = {}; // api data
+      let focused = null; // focused host name
+      const sIdx = {}; // host -> slider index
+      const manualSl = {}; // host -> true if user touched slider
+      const expanded = {}; // host -> show-all-periods bool
+      let dragging = null; // non-null while slider is dragged
+
+      const STEPS = [3, 15, 30, 60, 120, 180, 360, 720, 1440];
+      const SLAB = ["3m", "15m", "30m", "1h", "2h", "3h", "6h", "12h", "24h"];
+      const DEF = 5; // default 3h
+
+      /* find smallest STEPS index whose window covers all samples; returns DEF if no data */
+      function autoIdx(samples) {
+        if (!samples || !samples.length) return DEF;
+        const oldest = new Date(samples[0].timestamp).getTime();
+        const span = Date.now() - oldest; // ms
+        for (let i = 0; i < STEPS.length; i++)
+          if (STEPS[i] * 60000 >= span) return i;
+        return STEPS.length - 1;
       }
 
-      function formatTime(ts) {
+      /* ---- util ---- */
+      function esc(s) {
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+      const MO = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      function fts(ts) {
         const d = new Date(ts);
-        if (Number.isNaN(d.getTime())) return ts;
-        return d.toLocaleTimeString();
+        if (isNaN(d)) return String(ts);
+        return (
+          MO[d.getMonth()] +
+          " " +
+          d.getDate() +
+          " " +
+          String(d.getHours()).padStart(2, "0") +
+          ":" +
+          String(d.getMinutes()).padStart(2, "0")
+        );
+      }
+      function ftm(ms) {
+        const d = new Date(ms);
+        return (
+          String(d.getHours()).padStart(2, "0") +
+          ":" +
+          String(d.getMinutes()).padStart(2, "0")
+        );
       }
 
-      function computeStats(samples) {
-        const vals = samples
-          .map((s) => s.latency_ms)
-          .filter((v) => v !== null && !Number.isNaN(v));
+      function badge(s) {
+        if (s === true) return '<span class="badge-up">UP</span>';
+        if (s === false) return '<span class="badge-down">DOWN</span>';
+        return '<span class="badge-unk">UNKNOWN</span>';
+      }
 
-        const count = vals.length;
-        if (count === 0) {
-          return { count: 0, mean: null, stddev: null };
+      /* format ms duration to human-readable: 300ms, 3s, 1m30s, 5m, 2h */
+      function fmtDur(ms) {
+        if (ms < 1000) return ms + "ms";
+        const s = ms / 1000;
+        if (s < 60) return (s % 1 === 0 ? s : s.toFixed(1)) + "s";
+        const m = Math.floor(s / 60),
+          rs = Math.round(s % 60);
+        if (m < 60) return rs ? m + "m" + rs + "s" : m + "m";
+        const h = Math.floor(m / 60),
+          rm = m % 60;
+        return rm ? h + "h" + rm + "m" : h + "h";
+      }
+
+      /* events (newest-first) -> periods [{reachable,start,end}] newest-first, end=null means ongoing */
+      function periods(ev) {
+        if (!ev || !ev.length) return [];
+        const o = [];
+        for (let i = 0; i < ev.length; i++)
+          o.push({
+            up: ev[i].reachable,
+            s: ev[i].timestamp,
+            e: i === 0 ? null : ev[i - 1].timestamp,
+          });
+        return o;
+      }
+
+      function stats(samples, wm) {
+        const cut = Date.now() - wm * 60000;
+        const v = [];
+        for (const s of samples)
+          if (new Date(s.timestamp).getTime() >= cut && s.latency_ms !== null)
+            v.push(s.latency_ms);
+        const n = v.length;
+        if (!n) return { n: 0 };
+        const mean = v.reduce((a, b) => a + b, 0) / n;
+        const vr =
+          v.reduce((a, x) => a + (x - mean) ** 2, 0) / (n > 1 ? n - 1 : 1);
+        return { n, mean, sd: Math.sqrt(vr) };
+      }
+
+      /* ---- canvas chart ---- */
+      function chart(cvs, samples, wm) {
+        const ctx = cvs.getContext("2d");
+        const dpr = devicePixelRatio || 1;
+        const rc = cvs.getBoundingClientRect();
+        cvs.width = rc.width * dpr;
+        cvs.height = rc.height * dpr;
+        ctx.scale(dpr, dpr);
+        const W = rc.width,
+          H = rc.height;
+        const P = { t: 8, r: 12, b: 22, l: 44 };
+        const pW = W - P.l - P.r,
+          pH = H - P.t - P.b;
+        ctx.clearRect(0, 0, W, H);
+
+        const now = Date.now(),
+          cut = now - wm * 60000;
+        const pts = [];
+        for (const s of samples) {
+          const t = new Date(s.timestamp).getTime();
+          if (t >= cut) pts.push({ t, v: s.latency_ms });
+        }
+        if (!pts.length) {
+          msg(ctx, W, H, "No data in this time range");
+          return;
         }
 
-        const mean = vals.reduce((a, b) => a + b, 0) / count;
-        const variance =
-          vals.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) /
-          (count > 1 ? count - 1 : 1);
-        const stddev = Math.sqrt(variance);
+        const vv = pts.map((p) => p.v).filter((v) => v !== null);
+        if (!vv.length) {
+          msg(ctx, W, H, "Host unreachable in this range");
+          return;
+        }
 
-        return { count, mean, stddev };
+        let yMn = Math.min(...vv),
+          yMx = Math.max(...vv);
+        if (yMn === yMx) {
+          yMn = Math.max(0, yMn - 1);
+          yMx += 1;
+        }
+        const yp = (yMx - yMn) * 0.1;
+        yMn = Math.max(0, yMn - yp);
+        yMx += yp;
+
+        const xOf = (t) => P.l + ((t - cut) / (now - cut)) * pW;
+        const yOf = (v) => P.t + pH - ((v - yMn) / (yMx - yMn)) * pH;
+
+        // grid + Y labels
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        for (let i = 0; i <= 4; i++) {
+          const val = yMn + (yMx - yMn) * (i / 4),
+            y = yOf(val);
+          ctx.strokeStyle = "rgba(148,163,184,.12)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(P.l, y);
+          ctx.lineTo(W - P.r, y);
+          ctx.stroke();
+          ctx.fillStyle = "#64748b";
+          ctx.font = "9px monospace";
+          ctx.fillText(val.toFixed(1), P.l - 4, y);
+        }
+        // X labels
+        ctx.textAlign = "center";
+        ctx.textBaseline = "top";
+        ctx.fillStyle = "#64748b";
+        ctx.font = "9px monospace";
+        for (let i = 0; i <= 5; i++) {
+          const t = cut + (now - cut) * (i / 5);
+          ctx.fillText(ftm(t), xOf(t), H - P.b + 6);
+        }
+        // line
+        ctx.strokeStyle = "#60a5fa";
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        let seg = false;
+        ctx.beginPath();
+        for (const p of pts) {
+          if (p.v === null) {
+            if (seg) {
+              ctx.stroke();
+              ctx.beginPath();
+              seg = false;
+            }
+            continue;
+          }
+          if (!seg) {
+            ctx.moveTo(xOf(p.t), yOf(p.v));
+            seg = true;
+          } else ctx.lineTo(xOf(p.t), yOf(p.v));
+        }
+        if (seg) ctx.stroke();
+
+        // fill
+        const gr = ctx.createLinearGradient(0, P.t, 0, P.t + pH);
+        gr.addColorStop(0, "rgba(96,165,250,.15)");
+        gr.addColorStop(1, "rgba(96,165,250,.01)");
+        ctx.fillStyle = gr;
+        seg = false;
+        let ss = 0;
+        ctx.beginPath();
+        for (let i = 0; i < pts.length; i++) {
+          const p = pts[i];
+          if (p.v === null) {
+            if (seg) {
+              ctx.lineTo(xOf(pts[i - 1].t), yOf(yMn));
+              ctx.lineTo(xOf(pts[ss].t), yOf(yMn));
+              ctx.closePath();
+              ctx.fill();
+              ctx.beginPath();
+              seg = false;
+            }
+            continue;
+          }
+          if (!seg) {
+            ss = i;
+            ctx.moveTo(xOf(p.t), yOf(p.v));
+            seg = true;
+          } else ctx.lineTo(xOf(p.t), yOf(p.v));
+        }
+        if (seg) {
+          let li = pts.length - 1;
+          while (li >= 0 && pts[li].v === null) li--;
+          if (li >= ss) {
+            ctx.lineTo(xOf(pts[li].t), yOf(yMn));
+            ctx.lineTo(xOf(pts[ss].t), yOf(yMn));
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+      }
+      function msg(ctx, W, H, t) {
+        ctx.fillStyle = "#475569";
+        ctx.font = "11px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(t, W / 2, H / 2);
       }
 
-      function createHostCard(name, state) {
+      /* ---- build card ---- */
+      function mkCard(name, st, isFoc) {
+        const hc = Object.keys(D).length;
         const card = document.createElement("div");
         card.className =
-          "bg-slate-900/60 border border-slate-800 rounded-2xl shadow-lg shadow-black/40 p-4 flex flex-col gap-3";
+          "card" +
+          (isFoc ? " focused" : "") +
+          (!isFoc && hc > 1 ? " clickable" : "");
 
-        const header = document.createElement("div");
-        header.className = "flex items-center justify-between gap-2";
+        // header
+        const hdr = document.createElement("div");
+        hdr.className = "card-header";
+        const tl = document.createElement("div");
+        tl.innerHTML = "<h2>" + esc(name) + "</h2>";
+        const rt = document.createElement("div");
+        rt.className = "hdr-right";
+        rt.innerHTML = badge(st.last_status);
+        if (hc > 1) {
+          const b = document.createElement("button");
+          b.className = "focus-btn";
+          b.textContent = isFoc ? "\u25BC Minimize" : "\u25B2 Focus";
+          b.addEventListener("click", (e) => {
+            e.stopPropagation();
+            focused = isFoc ? null : name;
+            render();
+          });
+          rt.appendChild(b);
+        }
+        hdr.appendChild(tl);
+        hdr.appendChild(rt);
+        card.appendChild(hdr);
 
-        const title = document.createElement("div");
-        title.innerHTML =
-          '<h2 class="font-semibold text-lg text-slate-50 truncate">' +
-          name +
-          "</h2>";
+        // ping intervals
+        const iv = document.createElement("div");
+        iv.className = "intervals";
+        iv.innerHTML =
+          "Intervals - up: <span>" +
+          fmtDur(st.up_interval_ms) +
+          "</span> · down: <span>" +
+          fmtDur(st.down_interval_ms) +
+          "</span>";
+        card.appendChild(iv);
 
-        const status = document.createElement("div");
-        status.innerHTML = statusBadge(state.last_status);
-
-        header.appendChild(title);
-        header.appendChild(status);
-
-        const body = document.createElement("div");
-        body.className = "space-y-3";
-
-        // Recent reachability changes
-        const eventsSection = document.createElement("div");
-        const eventsTitle = document.createElement("div");
-        eventsTitle.className =
-          "text-xs font-medium text-slate-400 uppercase tracking-wide";
-        eventsTitle.textContent = "Recent reachability changes";
-
-        const eventsList = document.createElement("ul");
-        eventsList.className = "mt-1 space-y-1 text-xs text-slate-300";
-
-        if (state.reachability_events.length === 0) {
+        // periods
+        const ps = periods(st.reachability_events);
+        const sec = document.createElement("div");
+        const ttl = document.createElement("div");
+        ttl.className = "stitle";
+        ttl.textContent = "Status history";
+        sec.appendChild(ttl);
+        const ul = document.createElement("ul");
+        ul.className = "periods";
+        if (!ps.length) {
           const li = document.createElement("li");
           li.textContent = "No changes recorded yet.";
-          li.className = "text-slate-500";
-          eventsList.appendChild(li);
+          li.style.color = "#475569";
+          ul.appendChild(li);
         } else {
-          state.reachability_events.forEach((ev) => {
-            const li = document.createElement("li");
+          const def = isFoc ? 5 : 3,
+            all = expanded[name] || false;
+          const vis = all ? ps.length : Math.min(def, ps.length);
+          for (let i = 0; i < vis; i++) {
+            const p = ps[i],
+              li = document.createElement("li");
+            const endHtml = p.e
+              ? '<span class="ts">' + fts(p.s) + " ~ " + fts(p.e) + "</span>"
+              : '<span class="ts">' +
+                fts(p.s) +
+                ' ~ </span><span class="ts ts-now">now</span>';
             li.innerHTML =
-              '<span class="font-mono text-[11px] text-slate-400">' +
-              ev.timestamp +
-              "</span>" +
-              " · " +
-              (ev.reachable
-                ? '<span class="text-emerald-300 font-semibold">UP</span>'
-                : '<span class="text-rose-300 font-semibold">DOWN</span>');
-            eventsList.appendChild(li);
+              '<span class="' +
+              (p.up ? "s-up" : "s-dn") +
+              '">' +
+              (p.up ? "UP" : "DOWN") +
+              "</span> " +
+              endHtml;
+            ul.appendChild(li);
+          }
+          sec.appendChild(ul);
+          if (ps.length > def) {
+            const mb = document.createElement("button");
+            mb.className = "more-btn";
+            mb.textContent = all ? "Show less" : "Show all (" + ps.length + ")";
+            mb.addEventListener("click", (e) => {
+              e.stopPropagation();
+              expanded[name] = !all;
+              render();
+            });
+            sec.appendChild(mb);
+          }
+        }
+        if (!sec.contains(ul)) sec.appendChild(ul);
+        card.appendChild(sec);
+
+        // stats
+        const idx = sIdx[name] ?? DEF,
+          tw = STEPS[idx];
+        const s = stats(st.latency_samples, tw);
+        const bar = document.createElement("div");
+        bar.className = "stats-bar";
+        const bL = document.createElement("div");
+        bL.innerHTML = '<span class="sl">Latency summary</span>';
+        const bR = document.createElement("div");
+        if (!s.n) bR.innerHTML = '<span class="mu">No data</span>';
+        else
+          bR.innerHTML =
+            '<span class="mu">N</span>&nbsp;<span class="m">' +
+            s.n +
+            "</span> &middot; " +
+            '<span class="mu">\u03BC</span>&nbsp;<span class="m">' +
+            s.mean.toFixed(1) +
+            "&nbsp;ms</span> &middot; " +
+            '<span class="mu">\u03C3</span>&nbsp;<span class="m">' +
+            s.sd.toFixed(1) +
+            "&nbsp;ms</span>";
+        bar.appendChild(bL);
+        bar.appendChild(bR);
+        card.appendChild(bar);
+
+        // chart + slider
+        const cs = document.createElement("div");
+        cs.className = "chart-sec";
+        const cc = document.createElement("div");
+        cc.className = "chart-ctrl";
+        const ct = document.createElement("span");
+        ct.className = "stitle";
+        ct.textContent = "Latency (ms)";
+        const sw = document.createElement("div");
+        sw.className = "sw";
+        const sl = document.createElement("input");
+        sl.type = "range";
+        sl.min = "0";
+        sl.max = String(STEPS.length - 1);
+        sl.value = String(idx);
+        const lb = document.createElement("span");
+        lb.className = "swl";
+        lb.textContent = SLAB[idx];
+
+        sl.addEventListener("mousedown", () => {
+          dragging = name;
+        });
+        sl.addEventListener(
+          "touchstart",
+          () => {
+            dragging = name;
+          },
+          { passive: true },
+        );
+        sl.addEventListener("input", (e) => {
+          e.stopPropagation();
+          const i = parseInt(e.target.value);
+          sIdx[name] = i;
+          manualSl[name] = true;
+          lb.textContent = SLAB[i];
+          // update chart + stats in place
+          const tw2 = STEPS[i],
+            s2 = stats(st.latency_samples, tw2);
+          if (!s2.n) bR.innerHTML = '<span class="mu">No data</span>';
+          else
+            bR.innerHTML =
+              '<span class="mu">N</span>&nbsp;<span class="m">' +
+              s2.n +
+              "</span> &middot; " +
+              '<span class="mu">\u03BC</span>&nbsp;<span class="m">' +
+              s2.mean.toFixed(1) +
+              "&nbsp;ms</span> &middot; " +
+              '<span class="mu">\u03C3</span>&nbsp;<span class="m">' +
+              s2.sd.toFixed(1) +
+              "&nbsp;ms</span>";
+          chart(cvs, st.latency_samples, tw2);
+        });
+
+        sw.addEventListener("click", (e) => e.stopPropagation());
+        sw.addEventListener("mousedown", (e) => e.stopPropagation());
+        sw.append(document.createTextNode("Window: "), sl, lb);
+        cc.appendChild(ct);
+        cc.appendChild(sw);
+        const cw = document.createElement("div");
+        cw.className = "cw";
+        const cvs = document.createElement("canvas");
+        cw.appendChild(cvs);
+        cs.appendChild(cc);
+        cs.appendChild(cw);
+        card.appendChild(cs);
+
+        if (!isFoc && hc > 1)
+          card.addEventListener("click", () => {
+            focused = name;
+            render();
           });
-        }
 
-        eventsSection.appendChild(eventsTitle);
-        eventsSection.appendChild(eventsList);
-
-        // Summary stats
-        const stats = computeStats(state.latency_samples);
-        const statsSection = document.createElement("div");
-        statsSection.className =
-          "flex items-center justify-between text-[11px] text-slate-400 border border-slate-800 rounded-xl px-3 py-2 bg-slate-950/40";
-
-        const left = document.createElement("div");
-        left.innerHTML =
-          '<div class="font-medium text-xs text-slate-300">Latency summary</div>' +
-          '<div class="text-[11px] text-slate-400">Last 3h of samples</div>';
-
-        const right = document.createElement("div");
-        if (stats.count === 0) {
-          right.innerHTML = '<span class="text-slate-500">No data yet</span>';
-        } else {
-          right.innerHTML =
-            '<div class="flex gap-3">' +
-            '<div><span class="text-slate-500">N</span> <span class="font-mono">' +
-            stats.count +
-            "</span></div>" +
-            '<div><span class="text-slate-500">μ</span> <span class="font-mono">' +
-            stats.mean.toFixed(1) +
-            " ms</span></div>" +
-            '<div><span class="text-slate-500">σ</span> <span class="font-mono">' +
-            stats.stddev.toFixed(1) +
-            " ms</span></div>" +
-            "</div>";
-        }
-
-        statsSection.appendChild(left);
-        statsSection.appendChild(right);
-
-        // Latency chart container
-        const chartSection = document.createElement("div");
-        const chartTitle = document.createElement("div");
-        chartTitle.className =
-          "flex items-center justify-between text-xs text-slate-400";
-        chartTitle.innerHTML =
-          '<span class="font-medium uppercase tracking-wide">Latency (ms, last 3h)</span>';
-
-        const canvasWrapper = document.createElement("div");
-        canvasWrapper.className = "mt-2 h-32";
-        const canvas = document.createElement("canvas");
-        const chartId = "chart-" + name.replace(/[^a-zA-Z0-9_-]/g, "_");
-        canvas.id = chartId;
-        canvasWrapper.appendChild(canvas);
-
-        chartSection.appendChild(chartTitle);
-        chartSection.appendChild(canvasWrapper);
-
-        body.appendChild(eventsSection);
-        body.appendChild(statsSection);
-        body.appendChild(chartSection);
-
-        card.appendChild(header);
-        card.appendChild(body);
-
-        return { card, chartId };
+        return { card, cvs, name };
       }
 
-      function renderChart(chartId, state) {
-        const ctx = document.getElementById(chartId)?.getContext("2d");
-        if (!ctx) return;
-
-        const labels = state.latency_samples.map((s) =>
-          formatTime(s.timestamp),
-        );
-        const values = state.latency_samples.map((s) =>
-          s.latency_ms === null ? null : s.latency_ms,
-        );
-
-        if (charts[chartId]) {
-          charts[chartId].destroy();
+      /* ---- render ---- */
+      function render() {
+        const fa = document.getElementById("focused-area");
+        const ga = document.getElementById("grid-area");
+        fa.innerHTML = "";
+        ga.innerHTML = "";
+        const entries = Object.entries(D);
+        if (!entries.length) {
+          const e = document.createElement("div");
+          e.className = "empty";
+          e.textContent =
+            "No hosts configured yet. Start nootnoot with at least one host.";
+          ga.appendChild(e);
+          return;
         }
-
-        charts[chartId] = new Chart(ctx, {
-          type: "line",
-          data: {
-            labels,
-            datasets: [
-              {
-                label: "Latency (ms)",
-                data: values,
-                spanGaps: true,
-                tension: 0.2,
-              },
-            ],
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: {
-                display: false,
-              },
-              tooltip: {
-                mode: "nearest",
-                intersect: false,
-              },
-            },
-            scales: {
-              x: {
-                display: true,
-                ticks: {
-                  maxTicksLimit: 6,
-                  autoSkip: true,
-                  color: "#9ca3af",
-                  font: { size: 10 },
-                },
-                grid: {
-                  display: false,
-                },
-              },
-              y: {
-                ticks: {
-                  color: "#cbd5f5",
-                  font: { size: 10 },
-                },
-                grid: {
-                  color: "rgba(148, 163, 184, 0.2)",
-                },
-              },
-            },
-            elements: {
-              point: {
-                radius: 0,
-              },
-            },
-          },
+        if (entries.length === 1) focused = entries[0][0];
+        const pending = [];
+        if (focused && D[focused]) {
+          const r = mkCard(focused, D[focused], true);
+          fa.appendChild(r.card);
+          pending.push(r);
+        }
+        for (const [n, s] of entries) {
+          if (n === focused) continue;
+          const r = mkCard(n, s, false);
+          ga.appendChild(r.card);
+          pending.push(r);
+        }
+        requestAnimationFrame(() => {
+          for (const { cvs, name } of pending)
+            chart(cvs, D[name].latency_samples, STEPS[sIdx[name] ?? DEF]);
         });
       }
 
+      /* ---- global events ---- */
+      window.addEventListener("mouseup", () => {
+        dragging = null;
+      });
+      window.addEventListener("touchend", () => {
+        dragging = null;
+      });
+      window.addEventListener("resize", () => render());
+
+      /* ---- refresh loop ---- */
       async function refresh() {
         try {
-          const res = await fetch("/api/state");
-          if (!res.ok) return;
-          const data = await res.json();
-          const container = document.getElementById("hosts");
-          container.innerHTML = "";
-
-          const entries = Object.entries(data);
-          if (entries.length === 0) {
-            const empty = document.createElement("div");
-            empty.className =
-              "col-span-full text-center text-slate-500 text-sm border border-dashed border-slate-700 rounded-xl py-10";
-            empty.textContent =
-              "No hosts configured yet. Start nootnoot with at least one host.";
-            container.appendChild(empty);
-            return;
+          const r = await fetch("/api/state");
+          if (!r.ok) return;
+          D = await r.json();
+          // auto-adjust sliders for hosts not manually overridden
+          for (const [name, st] of Object.entries(D)) {
+            if (manualSl[name]) continue;
+            const ai = autoIdx(st.latency_samples);
+            if (!(name in sIdx)) {
+              sIdx[name] = ai;
+            } else if (ai > sIdx[name]) {
+              sIdx[name] = sIdx[name] + 1;
+            }
           }
-
-          for (const [name, st] of entries) {
-            const { card, chartId } = createHostCard(name, st);
-            container.appendChild(card);
-            renderChart(chartId, st);
-          }
+          if (!dragging) render();
         } catch (e) {
-          console.error("Error refreshing dashboard:", e);
+          console.error("Refresh error:", e);
         }
       }
-
       document.addEventListener("DOMContentLoaded", () => {
         refresh();
         setInterval(refresh, 5000);

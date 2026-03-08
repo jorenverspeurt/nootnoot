@@ -2,12 +2,13 @@ repos:
   # ---------------------------
   # Rust format / lint / checks
   # ---------------------------
-  - repo: https://github.com/doublify/pre-commit-rust
-    rev: v1.0
+  - repo: https://github.com/FeryET/pre-commit-rust
+    rev: v1.2.1
     hooks:
       - id: fmt
       - id: cargo-check
       - id: clippy
+      - id: test
 
   # ---------------------------
   # Check for common security issues in dependencies
